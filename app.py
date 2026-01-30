@@ -16,22 +16,41 @@ st.set_page_config(page_title="台指期貨 / 選擇權 AI 儀表板", layout="w
 
 APP_TITLE = "台指期貨 / 選擇權 AI 儀表板（第二階段：真實盤後資料接入）"
 
-# ✅ CSS：修正標題被截掉 + KPI 卡片樣式 + 單螢幕視覺
-st.markdown("""
+# ✅ CSS：一次性修正標題被截掉（根因：header 覆蓋內容 + 曾把 header height 設 0）
+st.markdown(
+    """
 <style>
-/* ✅ 修正：保留足夠上緣空間，避免標題被切到 */
-.block-container { padding-top: 2.2rem; padding-bottom: 0.8rem; }
+/* =========================
+   ✅ 關鍵：為 Streamlit 固定 Header 預留空間
+   ========================= */
+/*
+Streamlit 頂部有固定 header/toolbar。
+如果不預留高度，第一個元素（標題）會被覆蓋而「上緣被截掉」。
+*/
+div[data-testid="stAppViewContainer"] > .main {
+  padding-top: 3.8rem;   /* ✅ 預留給 header 的空間，這個值通常最穩 */
+}
 
-/* ✅ 修正：Streamlit 頂部 header 區塊不要擋內容 */
-header[data-testid="stHeader"] { height: 0px; }
-header[data-testid="stHeader"] > div { padding-top: 0px; padding-bottom: 0px; }
+/* 主內容內部留白（可以略小，避免浪費空間） */
+.block-container {
+  padding-top: 0.8rem;
+  padding-bottom: 0.8rem;
+}
 
-/* ✅ 自訂標題（可換行、不截字） */
+/* header 保留存在但不遮擋視覺（不要 height:0） */
+header[data-testid="stHeader"] {
+  background: transparent;
+}
+
+/* =========================
+   標題（可換行、不截字）
+   ========================= */
 .app-title{
   font-size: 2.15rem;
   font-weight: 900;
-  line-height: 1.18;
-  margin: 0.2rem 0 0.2rem 0;
+  line-height: 1.20;
+  margin: 0;                 /* 避免 margin 與容器裁切互相影響 */
+  padding-top: 0.35rem;      /* ✅ 再保險：避免字體 ascent 被裁掉 */
   letter-spacing: 0.2px;
   word-break: break-word;
   overflow-wrap: anywhere;
@@ -39,7 +58,7 @@ header[data-testid="stHeader"] > div { padding-top: 0px; padding-bottom: 0px; }
 .app-subtitle{
   font-size: 0.95rem;
   opacity: 0.75;
-  margin: 0.0rem 0 0.8rem 0;
+  margin: 0.25rem 0 0.8rem 0;
 }
 
 /* KPI 卡片 */
@@ -66,7 +85,7 @@ header[data-testid="stHeader"] > div { padding-top: 0px; padding-bottom: 0px; }
   margin-top: 6px;
 }
 
-/* 多空顏色：你指定「偏多紅、偏空綠」 */
+/* 多空顏色：偏多紅、偏空綠 */
 .bull { color: #FF3B30; } /* 大紅 */
 .bear { color: #34C759; } /* 大綠 */
 .neut { color: #C7C7CC; } /* 灰 */
@@ -74,20 +93,24 @@ header[data-testid="stHeader"] > div { padding-top: 0px; padding-bottom: 0px; }
 /* dataframe 圓角 */
 [data-testid="stDataFrame"] { border-radius: 12px; overflow: hidden; }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
-# ✅ 自訂標題（避免 st.title 被截掉）
-st.markdown(f"""
+# ✅ 用自訂 HTML 標題（更可控，且不會被 Streamlit H1 的預設樣式影響）
+st.markdown(
+    f"""
 <div class="app-title">{APP_TITLE}</div>
 <div class="app-subtitle">提示：盤後資料通常在收盤後更新；若當天尚未更新，本程式會自動回溯到最近有資料的交易日。</div>
-""", unsafe_allow_html=True)
-
+""",
+    unsafe_allow_html=True,
+)
 
 # Debug 開關：可用網址加參數 ?debug=1
 params = st.query_params
 debug_mode = str(params.get("debug", "0")).lower() in ("1", "true", "yes", "y")
 
-# 保底預設（避免 NameError）
+# 保底預設
 final_score_pct = 0
 direction_text = "中性"
 
@@ -109,9 +132,6 @@ def get_finmind_token() -> str:
 FINMIND_TOKEN = get_finmind_token()
 
 
-# =========================
-# Debug 區塊
-# =========================
 def debug_panel():
     st.subheader("🛠️ Debug 狀態檢查")
     if FINMIND_TOKEN:
@@ -195,15 +215,11 @@ def backtrack_find_valid_date(target_date: dt.date, max_back_days: int = 14) -> 
     return None, pd.DataFrame()
 
 
-# =========================
-# 主力合約選擇 + AI 分數
-# =========================
 def pick_main_contract(df: pd.DataFrame) -> pd.Series | None:
     if df.empty:
         return None
 
     x = df.copy()
-
     if "trading_session" in x.columns:
         x = x[x["trading_session"].astype(str) == "after_market"]
 
@@ -297,9 +313,6 @@ def calc_ai_scores(main_row: pd.Series, df_all: pd.DataFrame) -> dict:
     }
 
 
-# =========================
-# 主力成本（VWAP）
-# =========================
 @st.cache_data(ttl=60 * 30, show_spinner=False)
 def fetch_tx_contract_history(end_date: dt.date, contract_yyyymm: str, lookback_days: int = 60) -> pd.DataFrame:
     start_date = end_date - dt.timedelta(days=lookback_days)
@@ -349,9 +362,6 @@ def calc_cost_vwap(df_hist: pd.DataFrame, n: int = 20, price_col: str = "close_n
     return float((x[price_col] * x["vol_num"]).sum() / vol_sum)
 
 
-# =========================
-# 方向分數（-100%~+100%）
-# =========================
 def calc_directional_score(
     close_price: float,
     vwap20: float | None,
@@ -362,26 +372,20 @@ def calc_directional_score(
 ) -> dict:
     scores = {}
 
-    # 主力成本偏離
     if vwap20 is not None and vwap20 > 0:
         diff = (close_price - vwap20) / vwap20
         scores["cost"] = clamp01(diff * 5.0)
     else:
         scores["cost"] = 0.0
 
-    # 量能（>1 偏多）
     if vol_ratio is not None:
         scores["volume"] = clamp01((float(vol_ratio) - 1.0) * 1.2)
     else:
         scores["volume"] = 0.0
 
-    # PCR（尚未接：先 0）
     scores["pcr"] = 0.0 if pcr is None else clamp01((1.0 - float(pcr)) * 1.5)
-
-    # IV（尚未接：先 0）
     scores["iv"] = 0.0 if atm_iv is None else clamp01((20.0 - float(atm_iv)) / 20.0)
 
-    # 日內動能
     if open_price is not None and float(open_price) > 0:
         scores["intraday"] = clamp01((close_price - float(open_price)) / float(open_price) * 5.0)
     else:
@@ -415,13 +419,13 @@ if main_row is None:
 
 ai = calc_ai_scores(main_row, df_tx)
 
-# ✅ 方向以原始 ai 為準（你的需求：不要跟 final_score_pct 打架）
+# ✅ 方向以原始 ai 為準
 raw_dir = str(ai.get("direction_text", "震盪/中性"))
 if "偏多" in raw_dir:
-    mood_class = "bull"   # 紅
+    mood_class = "bull"
     mood_text = "偏多"
 elif "偏空" in raw_dir:
-    mood_class = "bear"   # 綠
+    mood_class = "bear"
     mood_text = "偏空"
 else:
     mood_class = "neut"
@@ -438,7 +442,7 @@ avg20_close = None
 if df_main_hist is not None and not df_main_hist.empty:
     avg20_close = float(df_main_hist.tail(20)["close_num"].dropna().mean())
 
-# ✅ 先算 final_score_pct（避免 NameError / 0 值問題）
+# 方向強度
 try:
     factor_scores = calc_directional_score(
         close_price=float(main_row.get("close", 0) or 0),
@@ -448,29 +452,21 @@ try:
         atm_iv=None,
         open_price=main_row.get("open"),
     )
-
-    WEIGHTS = {
-        "cost": 0.45,
-        "volume": 0.25,
-        "intraday": 0.30,
-    }
+    WEIGHTS = {"cost": 0.45, "volume": 0.25, "intraday": 0.30}
     raw_score = sum(factor_scores.get(k, 0.0) * WEIGHTS[k] for k in WEIGHTS)
     final_score_pct = int(clamp01(raw_score) * 100)
-
 except Exception:
     final_score_pct = 0
     factor_scores = {}
 
-# ✅ 關鍵修正：方向強度正負號強制跟「原始方向」一致
+# ✅ 關鍵：方向強度正負號強制跟「原始方向」一致
 if mood_text == "偏空":
     final_score_pct = -abs(int(final_score_pct))
 elif mood_text == "偏多":
     final_score_pct = abs(int(final_score_pct))
 else:
-    # 中性：讓它收斂一點（避免出現很大但又中性）
     final_score_pct = int(clamp(final_score_pct / 100.0, -0.19, 0.19) * 100)
 
-# 方向強度文字（只用 final_score_pct）
 direction_text = (
     "強烈偏多" if final_score_pct >= 60 else
     "偏多" if final_score_pct >= 20 else
@@ -479,11 +475,9 @@ direction_text = (
     "強烈偏空"
 )
 
-# 一致性/風險燈號
 cons_dot = "🟢" if ai["consistency_pct"] >= 70 else ("🟠" if ai["consistency_pct"] >= 45 else "🔴")
 risk_dot = "🔴" if ai["risk_score"] >= 70 else ("🟠" if ai["risk_score"] >= 45 else "🟢")
 
-# ===== KPI 區（頂部卡片）=====
 c1, c2, c3, c4, c5 = st.columns([1.6, 1.6, 1.2, 1.2, 1.4], gap="small")
 
 with c1:
@@ -531,7 +525,6 @@ with c5:
     </div>
     """, unsafe_allow_html=True)
 
-# 主力成本與量能細節
 with st.expander("📌 主力成本與量能細節", expanded=True):
     info1, info2, info3, info4, info5, info6 = st.columns(6)
     info1.caption(f"主力合約：**{ai['main_contract']}**")
@@ -543,7 +536,6 @@ with st.expander("📌 主力成本與量能細節", expanded=True):
 
 st.divider()
 
-# 原始資料表（預設收合，避免畫面拉太長）
 show_cols = [
     "date", "futures_id", "contract_date",
     "open", "max", "min", "close",
