@@ -6,7 +6,6 @@ from bs4 import BeautifulSoup
 import streamlit as st
 
 st.markdown("## 🔧 Debug 狀態檢查")
-
 if "FINMIND_TOKEN" in st.secrets:
     token = st.secrets["FINMIND_TOKEN"]
     st.success("✅ FINMIND_TOKEN 已成功載入")
