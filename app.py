@@ -17,17 +17,19 @@ APP_TITLE = "台指期貨 / 選擇權 AI 儀表板（Position 結算最終版）
 st.markdown(
     """
 <style>
-div[data-testid="stAppViewContainer"] > .main { padding-top: 3.8rem; }
-.app-title{ font-size:2.15rem;font-weight:900;margin:0 }
-.app-subtitle{ font-size:.95rem;opacity:.75;margin:.3rem 0 .9rem }
+div[data-testid="stAppViewContainer"] > .main { padding-top: 3.2rem; }
+.app-title{ font-size:1.9rem;font-weight:900;margin:0 }
+.app-subtitle{ font-size:.9rem;opacity:.75;margin:.25rem 0 .8rem }
+.section-title{ font-size:1.15rem;font-weight:800;margin:1.2rem 0 .6rem }
 .kpi-card{
   border:1px solid rgba(255,255,255,.12);
   border-radius:14px;padding:14px 16px;
   background:rgba(255,255,255,.04);
   box-shadow:0 6px 22px rgba(0,0,0,.18)
 }
-.kpi-title{ font-size:.95rem;opacity:.85 }
+.kpi-title{ font-size:.85rem;opacity:.85 }
 .kpi-value{ font-size:2rem;font-weight:800 }
+.kpi-sub{ font-size:.8rem;opacity:.75;margin-top:4px }
 .bull{color:#FF3B30}
 .bear{color:#34C759}
 .neut{color:#C7C7CC}
@@ -40,9 +42,8 @@ st.markdown(
     f"""
 <div class="app-title">{APP_TITLE}</div>
 <div class="app-subtitle">
-✅ 資料基準：<b>Position（結算資料）</b><br/>
-✅ 收盤價定義：<b>Settlement Price（官方結算價）</b><br/>
-
+資料基準：<b>Position（結算資料）</b> ｜ 收盤價定義：<b>Settlement Price</b><br/>
+非交易日（週六日）不顯示任何資料
 </div>
 """,
     unsafe_allow_html=True,
@@ -92,9 +93,9 @@ def finmind_get(dataset, data_id, start_date, end_date):
         return pd.DataFrame()
     return pd.DataFrame(r.json().get("data", []))
 
-# =========================
-# 期貨 Position（完全不動）
-# =========================
+# ======================================================
+# ===================== 期貨（完全不動邏輯） =====================
+# ======================================================
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_position_for_trade_date(trade_date: dt.date) -> pd.DataFrame:
     df = finmind_get(
@@ -156,74 +157,129 @@ if df_day_all.empty:
     st.error("❌ 無結算資料")
     st.stop()
 
+st.markdown("<div class='section-title'>📈 台指期貨｜結算方向判斷</div>", unsafe_allow_html=True)
+
 main_row = pick_main_contract_position(df_day_all, trade_date)
 ai = calc_ai_scores(main_row, df_day_all)
 
 cls = "bull" if ai["direction_text"]=="偏多" else "bear" if ai["direction_text"]=="偏空" else "neut"
 
 c1,c2,c3,c4,c5 = st.columns([1.6,1.6,1.2,1.2,1.4],gap="small")
-with c1: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>方向</div><div class='kpi-value {cls}'>{ai['direction_text']}</div></div>",unsafe_allow_html=True)
-with c2: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>收盤價（結算價）</div><div class='kpi-value'>{ai['tx_last_price']:.0f}</div></div>",unsafe_allow_html=True)
-with c3: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>一致性</div><div class='kpi-value'>{ai['consistency_pct']}%</div></div>",unsafe_allow_html=True)
-with c4: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>風險</div><div class='kpi-value'>{ai['risk_score']}/100</div></div>",unsafe_allow_html=True)
-with c5: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>日變化</div><div class='kpi-value {cls}'>{ai['tx_spread_points']:+.0f}</div></div>",unsafe_allow_html=True)
+with c1:
+    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>方向</div><div class='kpi-value {cls}'>{ai['direction_text']}</div></div>",unsafe_allow_html=True)
+with c2:
+    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>收盤價（結算）</div><div class='kpi-value'>{ai['tx_last_price']:.0f}</div></div>",unsafe_allow_html=True)
+with c3:
+    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>一致性</div><div class='kpi-value'>{ai['consistency_pct']}%</div></div>",unsafe_allow_html=True)
+with c4:
+    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>風險</div><div class='kpi-value'>{ai['risk_score']}/100</div></div>",unsafe_allow_html=True)
+with c5:
+    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>日變化</div><div class='kpi-value {cls}'>{ai['tx_spread_points']:+.0f}</div></div>",unsafe_allow_html=True)
 
-# =========================
-# 選擇權模組（完全防呆）
-# =========================
+# ======================================================
+# ===================== 選擇權 v2（升級） =====================
+# ======================================================
 st.divider()
-st.subheader("🧩 選擇權 OI 壓力 / 支撐分析")
+st.markdown("<div class='section-title'>🧩 選擇權｜結構 × ΔOI × 價格確認</div>", unsafe_allow_html=True)
 
-@st.cache_data(ttl=600)
-def fetch_option_for_trade_date(trade_date: dt.date) -> pd.DataFrame:
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_option_for_trade_date(d: dt.date) -> pd.DataFrame:
     return finmind_get(
         dataset="TaiwanOptionDaily",
         data_id="TXO",
-        start_date=trade_date.strftime("%Y-%m-%d"),
-        end_date=trade_date.strftime("%Y-%m-%d"),
+        start_date=d.strftime("%Y-%m-%d"),
+        end_date=d.strftime("%Y-%m-%d"),
     )
 
-df_opt = fetch_option_for_trade_date(trade_date)
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_option_prev_trade_date(trade_date: dt.date) -> pd.DataFrame:
+    for i in range(1, 6):
+        d = trade_date - dt.timedelta(days=i)
+        if d.weekday() >= 5:
+            continue
+        df = fetch_option_for_trade_date(d)
+        if not df.empty:
+            return df
+    return pd.DataFrame()
 
-if df_opt.empty:
-    st.info("ℹ️ 無選擇權資料")
-else:
-    # 安全找 Call / Put 欄位
-    cp_col = None
-    for c in ["option_type", "call_put", "right"]:
-        if c in df_opt.columns:
-            cp_col = c
-            break
+def calc_option_market_bias_v2(df_today, df_prev, settlement_price, atm_range=2):
+    if df_today is None or df_today.empty:
+        return None
 
+    cp_col = next((c for c in ["option_type","call_put","right"] if c in df_today.columns), None)
     if cp_col is None:
-        st.info("ℹ️ 選擇權資料缺少 Call / Put 欄位")
-    else:
-        x = df_opt.copy()
-        x["cp"] = x[cp_col].astype(str).str.lower()
+        return None
+
+    def norm_cp(v):
+        s = str(v).lower()
+        if s.startswith("c"): return "call"
+        if s.startswith("p"): return "put"
+        return None
+
+    def prep(df):
+        x = df.copy()
+        x["cp"] = x[cp_col].apply(norm_cp)
         x["strike"] = pd.to_numeric(x["strike_price"], errors="coerce")
         x["oi"] = pd.to_numeric(x["open_interest"], errors="coerce")
-        x = x.dropna(subset=["strike","oi"])
+        return x.dropna(subset=["cp","strike","oi"])
 
-        call = x[x["cp"].str.contains("c")]
-        put  = x[x["cp"].str.contains("p")]
+    t = prep(df_today)
+    p = prep(df_prev) if df_prev is not None else pd.DataFrame()
 
-        if call.empty or put.empty:
-            st.info("ℹ️ 選擇權資料不足")
-        else:
-            call_max = call.loc[call["oi"].idxmax()]
-            put_max  = put.loc[put["oi"].idxmax()]
+    call, put = t[t["cp"]=="call"], t[t["cp"]=="put"]
+    if call.empty or put.empty:
+        return None
 
-            st.bar_chart(
-                pd.DataFrame({
-                    "Call OI": call.groupby("strike")["oi"].sum(),
-                    "Put OI": -put.groupby("strike")["oi"].sum()
-                })
-            )
+    total_oi = call["oi"].sum() + put["oi"].sum()
+    oi_center = ((call["strike"]*call["oi"]).sum() + (put["strike"]*put["oi"]).sum()) / total_oi
+    call_pressure = call.loc[call["oi"].idxmax()]["strike"]
+    put_support = put.loc[put["oi"].idxmax()]["strike"]
 
-            st.markdown(
-                f"""
-**📌 壓力位（Call OI 最大）**：{call_max['strike']:.0f}  
-**📌 支撐位（Put OI 最大）**：{put_max['strike']:.0f}  
-**📌 現價（結算）**：{ai['tx_last_price']:.0f}
-"""
-            )
+    delta_call = delta_put = 0
+    if not p.empty:
+        atm = round(settlement_price/50)*50
+        strikes = sorted(call["strike"].unique())
+        idx = strikes.index(atm) if atm in strikes else len(strikes)//2
+        sel = strikes[max(0,idx-atm_range):idx+atm_range+1]
+
+        delta_call = (call.set_index("strike")["oi"].reindex(sel).fillna(0) -
+                      p[p["cp"]=="call"].set_index("strike")["oi"].reindex(sel).fillna(0)).sum()
+        delta_put  = (put.set_index("strike")["oi"].reindex(sel).fillna(0) -
+                      p[p["cp"]=="put"].set_index("strike")["oi"].reindex(sel).fillna(0)).sum()
+
+    score_structure = 1 if settlement_price > oi_center else -1 if settlement_price < oi_center else 0
+    score_flow = 1 if delta_call>0 and settlement_price>oi_center else -1 if delta_call>0 and settlement_price<oi_center else 0
+    score_price = 1 if settlement_price>call_pressure else -1 if settlement_price<put_support else 0
+
+    final_score = 0.35*score_structure + 0.45*score_flow + 0.20*score_price
+
+    bias, cls = ("偏多","bull") if final_score>=0.5 else ("偏空","bear") if final_score<=-0.5 else ("結構中性","neut")
+
+    return {
+        "bias": bias,
+        "cls": cls,
+        "score": round(final_score,2),
+        "oi_center": oi_center,
+        "call_pressure": call_pressure,
+        "put_support": put_support,
+        "delta_call": delta_call,
+        "delta_put": delta_put,
+    }
+
+df_opt_today = fetch_option_for_trade_date(trade_date)
+df_opt_prev = fetch_option_prev_trade_date(trade_date)
+
+opt = calc_option_market_bias_v2(df_opt_today, df_opt_prev, ai["tx_last_price"])
+
+if opt is None:
+    st.info("ℹ️ 選擇權資料不足，無法進行完整分析")
+else:
+    c1,c2,c3,c4 = st.columns([1.4,1.4,1.6,1.6],gap="small")
+    with c1:
+        st.markdown(f"<div class='kpi-card'><div class='kpi-title'>選擇權方向</div><div class='kpi-value {opt['cls']}'>{opt['bias']}</div><div class='kpi-sub'>Score {opt['score']:+.2f}</div></div>",unsafe_allow_html=True)
+    with c2:
+        st.markdown(f"<div class='kpi-card'><div class='kpi-title'>OI 共識價</div><div class='kpi-value'>{opt['oi_center']:.0f}</div></div>",unsafe_allow_html=True)
+    with c3:
+        st.markdown(f"<div class='kpi-card'><div class='kpi-title'>上方壓力（Call OI）</div><div class='kpi-value'>{opt['call_pressure']:.0f}</div><div class='kpi-sub'>ΔCall OI {opt['delta_call']:+.0f}</div></div>",unsafe_allow_html=True)
+    with c4:
+        st.markdown(f"<div class='kpi-card'><div class='kpi-title'>下方支撐（Put OI）</div><div class='kpi-value'>{opt['put_support']:.0f}</div><div class='kpi-sub'>ΔPut OI {opt['delta_put']:+.0f}</div></div>",unsafe_allow_html=True)
