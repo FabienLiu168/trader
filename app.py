@@ -93,7 +93,7 @@ def finmind_get(dataset, data_id, start_date, end_date):
     return pd.DataFrame(r.json().get("data", []))
 
 # =========================
-# Position 期貨（完全不動）
+# 期貨 Position（完全不動）
 # =========================
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_position_for_trade_date(trade_date: dt.date) -> pd.DataFrame:
@@ -169,7 +169,7 @@ with c4: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>風險</div>
 with c5: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>日變化</div><div class='kpi-value {cls}'>{ai['tx_spread_points']:+.0f}</div></div>",unsafe_allow_html=True)
 
 # =========================
-# 選擇權模組（無任何外部套件）
+# 選擇權模組（完全防呆）
 # =========================
 st.divider()
 st.subheader("🧩 選擇權 OI 壓力 / 支撐分析")
@@ -188,31 +188,42 @@ df_opt = fetch_option_for_trade_date(trade_date)
 if df_opt.empty:
     st.info("ℹ️ 無選擇權資料")
 else:
-    df_opt["cp"] = df_opt.get("option_type", "").astype(str).str.lower()
-    df_opt["strike"] = pd.to_numeric(df_opt["strike_price"], errors="coerce")
-    df_opt["oi"] = pd.to_numeric(df_opt["open_interest"], errors="coerce")
-    df_opt = df_opt.dropna(subset=["strike","oi"])
+    # 安全找 Call / Put 欄位
+    cp_col = None
+    for c in ["option_type", "call_put", "right"]:
+        if c in df_opt.columns:
+            cp_col = c
+            break
 
-    call = df_opt[df_opt["cp"].str.contains("c")]
-    put  = df_opt[df_opt["cp"].str.contains("p")]
-
-    if call.empty or put.empty:
-        st.info("ℹ️ 選擇權資料不足")
+    if cp_col is None:
+        st.info("ℹ️ 選擇權資料缺少 Call / Put 欄位")
     else:
-        call_max = call.loc[call["oi"].idxmax()]
-        put_max  = put.loc[put["oi"].idxmax()]
+        x = df_opt.copy()
+        x["cp"] = x[cp_col].astype(str).str.lower()
+        x["strike"] = pd.to_numeric(x["strike_price"], errors="coerce")
+        x["oi"] = pd.to_numeric(x["open_interest"], errors="coerce")
+        x = x.dropna(subset=["strike","oi"])
 
-        st.bar_chart(
-            pd.DataFrame({
-                "Call OI": call.groupby("strike")["oi"].sum(),
-                "Put OI": -put.groupby("strike")["oi"].sum()
-            })
-        )
+        call = x[x["cp"].str.contains("c")]
+        put  = x[x["cp"].str.contains("p")]
 
-        st.markdown(
-            f"""
+        if call.empty or put.empty:
+            st.info("ℹ️ 選擇權資料不足")
+        else:
+            call_max = call.loc[call["oi"].idxmax()]
+            put_max  = put.loc[put["oi"].idxmax()]
+
+            st.bar_chart(
+                pd.DataFrame({
+                    "Call OI": call.groupby("strike")["oi"].sum(),
+                    "Put OI": -put.groupby("strike")["oi"].sum()
+                })
+            )
+
+            st.markdown(
+                f"""
 **📌 壓力位（Call OI 最大）**：{call_max['strike']:.0f}  
 **📌 支撐位（Put OI 最大）**：{put_max['strike']:.0f}  
 **📌 現價（結算）**：{ai['tx_last_price']:.0f}
 """
-        )
+            )
