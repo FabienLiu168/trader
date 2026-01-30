@@ -245,6 +245,29 @@ with c5: st.markdown(card("日變化", f"{ai['tx_spread_points']:+.0f}", cls=cls
 # UI：選擇權決策卡片（接入分析結果）
 # =========================
 st.divider()
+# =========================
+# 選擇權分析結果（防呆初始化）
+# =========================
+opt = None  # ⭐ 關鍵：先宣告，避免 NameError
+
+with st.spinner("分析選擇權市場中..."):
+    try:
+        df_opt_today = fetch_option_for_trade_date(trade_date)
+        df_opt_prev = fetch_option_for_trade_date(trade_date - dt.timedelta(days=1))
+
+        if (
+            df_opt_today is not None and not df_opt_today.empty and
+            df_opt_prev is not None and not df_opt_prev.empty
+        ):
+            opt = calc_option_market_bias_v2(
+                df_opt_today,
+                df_opt_prev,
+                ai["tx_last_price"],
+            )
+    except Exception as e:
+        opt = None
+        st.caption(f"⚠️ 選擇權分析暫時略過（{type(e).__name__}）")
+
 st.markdown("### 🧩 選擇權｜結構 × ΔOI × 價格確認")
 
 # 這裡假設你已經算好 opt（dict 或 None）
