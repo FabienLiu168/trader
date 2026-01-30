@@ -144,74 +144,31 @@ def calc_ai_scores(main_row, df_all):
     }
 
 # =========================
-# UI：台指期貨｜結算方向判斷（恢復原版）
+# UI：期貨
 # =========================
-st.markdown("## 📈 台指期貨｜結算方向判斷")
+trade_date = st.date_input("查詢交易日（結算）", value=dt.date.today())
 
-mood = ai["direction_text"]
-cls = "bull" if mood == "偏多" else "bear" if mood == "偏空" else "neut"
+if not is_trading_day(trade_date):
+    st.warning("📅 非交易日（週六 / 週日）")
+    st.stop()
 
-c1, c2, c3, c4, c5 = st.columns([1.6, 1.6, 1.2, 1.2, 1.4], gap="small")
+df_fut = fetch_position_for_trade_date(trade_date)
+if df_fut.empty:
+    st.error("❌ 無期貨結算資料")
+    st.stop()
 
-with c1:
-    st.markdown(
-        f"""
-        <div class="kpi-card">
-          <div class="kpi-title">方向</div>
-          <div class="kpi-value {cls}">{mood}</div>
-          <div class="kpi-sub">結算方向判斷</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+main_row = pick_main_contract_position(df_fut, trade_date)
+fut = calc_ai_scores(main_row, df_fut)
 
-with c2:
-    st.markdown(
-        f"""
-        <div class="kpi-card">
-          <div class="kpi-title">收盤價（結算）</div>
-          <div class="kpi-value">{ai["tx_last_price"]:.0f}</div>
-          <div class="kpi-sub">Settlement Price</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+st.markdown("## 📈 台指期貨｜結算資訊")
+fc1, fc2, fc3 = st.columns(3, gap="small")
 
-with c3:
-    st.markdown(
-        f"""
-        <div class="kpi-card">
-          <div class="kpi-title">一致性</div>
-          <div class="kpi-value">{ai["consistency_pct"]}%</div>
-          <div class="kpi-sub">多因子同向程度</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-with c4:
-    st.markdown(
-        f"""
-        <div class="kpi-card">
-          <div class="kpi-title">風險</div>
-          <div class="kpi-value">{ai["risk_score"]}/100</div>
-          <div class="kpi-sub">波動與不確定性</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-with c5:
-    st.markdown(
-        f"""
-        <div class="kpi-card">
-          <div class="kpi-title">日變化</div>
-          <div class="kpi-value {cls}">{ai["tx_spread_points"]:+.0f}</div>
-          <div class="kpi-sub">結算價 - 開盤價</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+with fc1:
+    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>結算價</div><div class='kpi-value'>{fut['price']:.0f}</div></div>", unsafe_allow_html=True)
+with fc2:
+    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>日變化</div><div class='kpi-value'>{fut['spread']:+.0f}</div></div>", unsafe_allow_html=True)
+with fc3:
+    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>風險</div><div class='kpi-value'>{fut['risk']}/100</div></div>", unsafe_allow_html=True)
 
 # =========================
 # 選擇權 V3（ΔOI + 結構 + 價格）
