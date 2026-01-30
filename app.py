@@ -1,203 +1,120 @@
-import re
-import datetime as dt
+import streamlit as st
 import pandas as pd
 import requests
-from bs4 import BeautifulSoup
-import streamlit as st
+from datetime import datetime, timedelta
+from io import StringIO
 
-st.markdown("## 🔧 Debug 狀態檢查")
-if "FINMIND_TOKEN" in st.secrets:
-    token = st.secrets["FINMIND_TOKEN"]
-    st.success("✅ FINMIND_TOKEN 已成功載入")
-    st.write("Token 長度：", len(token))
-else:
-    st.error("❌ FINMIND_TOKEN 未讀取到")
-
+# ----------------------------
+# 基本設定
+# ----------------------------
 st.set_page_config(page_title="台指期貨/選擇權 AI 儀表板", layout="wide")
 
-TAIFEX_FUT_DAILY_URL = "https://www.taifex.com.tw/cht/3/futDailyMarketReport"
-TAIFEX_OPT_PCR_URL = "https://www.taifex.com.tw/cht/3/pcRatio"
-
-# -----------------------------
-# Utils
-# -----------------------------
-def tw_date_str(d: dt.date) -> str:
-    # TAIFEX 多數表單吃 yyyy/mm/dd
-    return d.strftime("%Y/%m/%d")
-
-def guess_last_trade_date(today: dt.date) -> dt.date:
-    # 簡化：週末往前推（不含國定假日判斷）
-    if today.weekday() == 5:   # Sat
-        return today - dt.timedelta(days=1)
-    if today.weekday() == 6:   # Sun
-        return today - dt.timedelta(days=2)
-    return today
-
-@st.cache_data(ttl=60 * 30, show_spinner=False)
-def fetch_fut_daily_table(query_date: dt.date, market_code: str, commodity_id: str = "TXF") -> pd.DataFrame:
-    """
-    market_code:
-      '0' 通常代表一般日盤
-      '1' 常用來查夜盤(盤後) (TAIFEX 站內表單用法可能調整，若取不到就會回空表)
-    """
-    payload = {
-        "queryType": "2",
-        "marketCode": market_code,
-        "commodity_id": commodity_id,
-        "queryDate": tw_date_str(query_date),
-    }
-
-    r = requests.post(TAIFEX_FUT_DAILY_URL, data=payload, timeout=20)
-    r.raise_for_status()
-
-    # 解析 HTML 表格（盤後資料）
-    soup = BeautifulSoup(r.text, "lxml")
-    table = soup.find("table", {"class": "table_f"})
-    if table is None:
-        return pd.DataFrame()
-
-    df_list = pd.read_html(str(table))
-    if not df_list:
-        return pd.DataFrame()
-
-    df = df_list[0].copy()
-    # 清理欄名
-    df.columns = [str(c).strip() for c in df.columns]
-    return df
-
-@st.cache_data(ttl=60 * 30, show_spinner=False)
-def fetch_put_call_ratio(query_date: dt.date) -> pd.DataFrame:
-    """
-    Put/Call Ratio 盤後資料（TXO/全市場）
-    """
-    payload = {
-        "queryDate": tw_date_str(query_date),
-    }
-    r = requests.post(TAIFEX_OPT_PCR_URL, data=payload, timeout=20)
-    r.raise_for_status()
-
-    soup = BeautifulSoup(r.text, "lxml")
-    table = soup.find("table", {"class": "table_f"})
-    if table is None:
-        return pd.DataFrame()
-
-    df_list = pd.read_html(str(table))
-    if not df_list:
-        return pd.DataFrame()
-    df = df_list[0].copy()
-    df.columns = [str(c).strip() for c in df.columns]
-    return df
-
-def pick_txf_main_row(df: pd.DataFrame) -> pd.Series | None:
-    """
-    從期貨每日行情表中抓出 TXF 近月(通常第一列)資訊。
-    TAIFEX 表格欄位偶爾會調整，這裡做較寬鬆的抓法。
-    """
-    if df.empty:
-        return None
-
-    # 可能的欄位：到期月份/契約、成交量、未平倉、收盤價、漲跌...
-    # 通常第一列就是近月，先保守取第一列
-    row = df.iloc[0]
-    return row
-
-def safe_float(x):
-    try:
-        if isinstance(x, str):
-            x = x.replace(",", "").strip()
-        return float(x)
-    except:
-        return None
-
-# -----------------------------
-# UI
-# -----------------------------
 st.title("📊 台指期貨 / 選擇權 AI 儀表板（第二階段：真實盤後資料接入）")
 
-colA, colB = st.columns([2, 3])
-with colA:
-    today = dt.date.today()
-    default_date = guess_last_trade_date(today)
-    qdate = st.date_input("查詢日期（盤後）", value=default_date)
-with colB:
-    st.caption("提示：盤後資料通常在收盤後更新；若當天尚未更新，請改查前一交易日。")
+# ----------------------------
+# Debug：確認 Secrets
+# ----------------------------
+st.markdown("## 🔧 Debug 狀態檢查")
 
-tab1, tab2, tab3 = st.tabs(["期貨 TXF（日盤/夜盤）", "選擇權 TXO（PCR）", "總結（燈號）"])
+FINMIND_TOKEN = None
+if "FINMIND_TOKEN" in st.secrets:
+    FINMIND_TOKEN = st.secrets["FINMIND_TOKEN"]
+    st.success("✅ FINMIND_TOKEN 已成功載入")
+    st.write("Token 長度：", len(FINMIND_TOKEN))
+else:
+    st.error("❌ FINMIND_TOKEN 未讀取到（請到 Streamlit Secrets 設定）")
+    st.stop()
 
-# -----------------------------
-# Tab 1: Futures
-# -----------------------------
-with tab1:
-    st.subheader("TXF 盤後資料（分日盤/夜盤）")
+# ----------------------------
+# FinMind API：通用取資料
+# ----------------------------
+def finmind_get(dataset: str, data_id: str = None, start_date: str = None, end_date: str = None):
+    url = "https://api.finmindtrade.com/api/v4/data"
+    params = {
+        "dataset": dataset,
+        "token": FINMIND_TOKEN,
+    }
+    if data_id:
+        params["data_id"] = data_id
+    if start_date:
+        params["start_date"] = start_date
+    if end_date:
+        params["end_date"] = end_date
 
-    c1, c2 = st.columns(2)
+    r = requests.get(url, params=params, timeout=20)
+    r.raise_for_status()
+    js = r.json()
+    if js.get("status") != 200:
+        return pd.DataFrame()
+    data = js.get("data", [])
+    return pd.DataFrame(data)
 
-    with c1:
-        st.markdown("### ☀️ 日盤（盤後）")
+# ----------------------------
+# Step 3-1 核心：回溯找最近有效交易日
+# ----------------------------
+def find_latest_valid_date(fetch_func, target_date: datetime, lookback_days: int = 15):
+    """
+    fetch_func(date_str) -> df
+    從 target_date 往前最多 lookback_days 天，找到第一天 df 非空的日期
+    """
+    for i in range(0, lookback_days + 1):
+        d = target_date - timedelta(days=i)
+        d_str = d.strftime("%Y-%m-%d")
         try:
-            df_day = fetch_fut_daily_table(qdate, market_code="0", commodity_id="TXF")
-        except Exception as e:
-            df_day = pd.DataFrame()
-            st.error(f"日盤資料抓取失敗：{e}")
+            df = fetch_func(d_str)
+            if df is not None and not df.empty:
+                return d_str, df
+        except Exception:
+            continue
+    return None, pd.DataFrame()
 
-        if df_day.empty:
-            st.warning("日盤盤後資料目前抓不到（可能當日尚未更新 / TAIFEX 表單參數調整）。")
-        else:
-            st.dataframe(df_day, use_container_width=True)
-            r = pick_txf_main_row(df_day)
-            if r is not None:
-                st.info(f"日盤近月（第一列）摘要：{r.to_dict()}")
+# ----------------------------
+# UI：日期選擇
+# ----------------------------
+st.markdown("---")
+col1, col2 = st.columns([2, 3])
 
-    with c2:
-        st.markdown("### 🌙 夜盤（盤後）")
-        try:
-            df_night = fetch_fut_daily_table(qdate, market_code="1", commodity_id="TXF")
-        except Exception as e:
-            df_night = pd.DataFrame()
-            st.error(f"夜盤資料抓取失敗：{e}")
+with col1:
+    user_date = st.date_input("查詢日期（盤後）", value=datetime.now().date())
+    user_date_dt = datetime.combine(user_date, datetime.min.time())
 
-        if df_night.empty:
-            st.warning("夜盤盤後資料目前抓不到（常見原因：TAIFEX 夜盤 marketCode 參數可能已調整）。")
-            st.caption("如果你要我幫你精準對齊夜盤參數：你只要回我「夜盤頁面能查到，但程式查不到」，我會用你實際查到的頁面條件反推正確參數。")
-        else:
-            st.dataframe(df_night, use_container_width=True)
-            r = pick_txf_main_row(df_night)
-            if r is not None:
-                st.info(f"夜盤近月（第一列）摘要：{r.to_dict()}")
+with col2:
+    st.info("提示：盤後資料常在收盤後更新；若當天尚未更新，本程式會自動往前找最近有資料的交易日。")
 
-# -----------------------------
-# Tab 2: Options PCR
-# -----------------------------
-with tab2:
-    st.subheader("Put/Call Ratio（盤後）")
-    try:
-        df_pcr = fetch_put_call_ratio(qdate)
-    except Exception as e:
-        df_pcr = pd.DataFrame()
-        st.error(f"PCR 抓取失敗：{e}")
+# ----------------------------
+# 你目前用的：TXF 盤後資料抓取（先做一個可驗證的版本）
+# 注意：FinMind 的 dataset 可能會依你帳號/方案不同而可用不同
+# 我們用「回溯找日期」方式先把資料抓出來
+# ----------------------------
+def fetch_txf_daily(date_str: str):
+    # 這裡先用 start_date=end_date=date_str 方式抓當日
+    # dataset 名稱如你原本用的那個（若不同請告訴我，我會對應修正）
+    # 常見：TaiwanFuturesDaily / FuturesDaily / TaiwanFutures ... (依 FinMind 定義)
+    # 你先用這個跑，看 df 是否抓到；抓不到我們再精準校正 dataset / data_id
+    df = finmind_get(
+        dataset="TaiwanFuturesDaily",
+        data_id="TX",  # TX 代表台指期(常見)，若你原程式不同再改
+        start_date=date_str,
+        end_date=date_str
+    )
+    return df
 
-    if df_pcr.empty:
-        st.warning("PCR 目前抓不到（可能當日尚未更新 / TAIFEX 網站結構調整）。")
-    else:
-        st.dataframe(df_pcr, use_container_width=True)
+# ----------------------------
+# 執行：回溯找最近有資料的日期
+# ----------------------------
+st.markdown("## 📌 TXF 盤後資料（自動回溯找最近有效交易日）")
 
-# -----------------------------
-# Tab 3: Summary lights (simple demo)
-# -----------------------------
-with tab3:
-    st.subheader("一致性 + 風險狀態（示範版）")
+latest_date, df_txf = find_latest_valid_date(fetch_txf_daily, user_date_dt, lookback_days=15)
 
-    # 目前先用「有無資料」做示範，等你日/夜盤與 PCR 都穩定抓到後再接 v7 多因子分數
-    have_day = "df_day" in locals() and not df_day.empty
-    have_night = "df_night" in locals() and not df_night.empty
-    have_pcr = "df_pcr" in locals() and not df_pcr.empty
+if latest_date is None or df_txf.empty:
+    st.error("❌ 回溯 15 天仍抓不到 TXF 盤後資料。代表 dataset/data_id 需校正（我會幫你直接修正）。")
+    st.stop()
 
-    score = sum([have_day, have_night, have_pcr])
-    if score >= 3:
-        st.success("🟢 一致性：高（資料齊全，可開始做多因子）")
-    elif score == 2:
-        st.warning("🟡 一致性：中（資料缺一塊，建議先補齊）")
-    else:
-        st.error("🔴 一致性：低（目前資料不足，先把資料源穩定）")
+st.success(f"✅ 抓到資料！你選的日期：{user_date_dt.strftime('%Y-%m-%d')} → 實際抓到資料日期：{latest_date}")
+st.write("筆數：", len(df_txf))
 
-    st.caption("下一步：把 v7 的多因子條件（PCR/IV/Volume/OI/結算/散戶多空比/外資/台積電等）逐一接入，並用『日盤 vs 夜盤』分開算分，再做合併建議。")
+# 顯示資料（先把欄位全部展開給你看，方便我們確認欄位名稱）
+st.dataframe(df_txf, width='stretch')
+
+st.markdown("---")
+st.caption("Step 3-1 完成：已做到『自動回溯抓到最近一個有資料的交易日』。下一步會把欄位對應到日盤/夜盤與分數計算。")
