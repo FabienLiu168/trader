@@ -224,13 +224,22 @@ c1, c2, c3, c4, c5 = st.columns([1.6,1.6,1.2,1.2,1.4], gap="small")
 with c1:
     st.markdown(f"<div class='kpi-card'><div class='kpi-title'>方向</div><div class='kpi-value {cls}'>{mood}</div><div class='kpi-sub'>結算方向判斷</div></div>", unsafe_allow_html=True)
 with c2:
-    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>收盤價</div><div class='kpi-value'>
-  {fut_price:.0f}
-  <span style="font-size:1.05rem;opacity:.75;">
-    ({price_diff:+.0f}，{pct_diff:+.1f}%)
-  </span>
-</div>
-<div class='kpi-sub'>Settlement</div></div>", unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div class='kpi-card'>
+          <div class='kpi-title'>收盤價</div>
+          <div class='kpi-value'>
+            {fut_price:.0f}
+            <span style="font-size:1.05rem;opacity:.75;">
+              ({price_diff:+.0f}，{pct_diff:+.1f}%)
+            </span>
+          </div>
+          <div class='kpi-sub'>Settlement</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 with c3:
     st.markdown(f"<div class='kpi-card'><div class='kpi-title'>一致性</div><div class='kpi-value'>{ai['consistency_pct']}%</div></div>", unsafe_allow_html=True)
 with c4:
