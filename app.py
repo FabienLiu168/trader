@@ -56,8 +56,8 @@ st.markdown(
     f"""
 <div class="app-title">{APP_TITLE}</div>
 <div class="app-subtitle">
-⚠️ 本儀表板已加入「交易日 trade_date」正規化：避免夜盤跨日導致週末出現資料、或週內相鄰日資料雷同。
-你可選擇只看日盤 / 只看夜盤 / 日盤+夜盤（清楚區分）。
+✅ 本版已改成：只有「查詢日期本身有資料」才顯示 UI；不再顯示最近有效交易日。<br/>
+✅ 並修正「僅日盤」表格空白問題：若資料源無 regular，會提示並自動 fallback 顯示 after_market（避免空白誤判）。
 </div>
 """,
     unsafe_allow_html=True,
@@ -151,19 +151,6 @@ def is_trading_data_ok(df: pd.DataFrame) -> bool:
     return need_cols.issubset(set(df.columns))
 
 
-def is_weekend(d: dt.date) -> bool:
-    return d.weekday() in (5, 6)
-
-
-def rollback_to_friday(d: dt.date) -> dt.date:
-    # Sat->Fri (-1), Sun->Fri (-2)
-    if d.weekday() == 5:
-        return d - dt.timedelta(days=1)
-    if d.weekday() == 6:
-        return d - dt.timedelta(days=2)
-    return d
-
-
 # =========================
 # ✅ 核心：建立 trade_date（交易日）避免夜盤跨日
 # =========================
@@ -172,20 +159,18 @@ def add_trade_date(df: pd.DataFrame) -> pd.DataFrame:
     建立 trade_date（交易日）：
     - regular：trade_date = date
     - after_market：
-        (1) 若 date 落在週末，trade_date 回推到週五
-        (2) 若 date 當天沒有 regular，但前一天有 regular，trade_date = 前一天
+        (1) 週末回推到週五
+        (2) 若 date 當天沒有 regular 但前一天有 regular → 歸屬前一天（解決 1/26 & 1/27 同時出現）
     """
     x = df.copy()
-
     x["date_dt"] = pd.to_datetime(x["date"], errors="coerce")
     x = x.dropna(subset=["date_dt"])
     x["cal_date"] = x["date_dt"].dt.date
 
     if "trading_session" not in x.columns:
-        x["trading_session"] = "unknown"
+        x["trading_session"] = "after_market"  # ✅ 保底：此 dataset 常見只有 after_market
     x["trading_session"] = x["trading_session"].astype(str)
 
-    # 收集所有 regular 的日期，用來判斷夜盤是否被寫到隔天
     regular_dates = set(x.loc[x["trading_session"] == "regular", "cal_date"].unique().tolist())
 
     def _map_trade_date(row) -> dt.date:
@@ -195,18 +180,17 @@ def add_trade_date(df: pd.DataFrame) -> pd.DataFrame:
         if sess != "after_market":
             return d
 
-        # (1) 週末回推
+        # 週末回推
         if d.weekday() == 5:
             return d - dt.timedelta(days=1)
         if d.weekday() == 6:
             return d - dt.timedelta(days=2)
 
-        # (2) 週內跨日：如果當天沒有 regular，但前一天有 regular → 歸屬前一天
+        # 週內跨日：當天沒 regular、前一天有 regular → 歸屬前一天
         prev = d - dt.timedelta(days=1)
         if (d not in regular_dates) and (prev in regular_dates):
             return prev
 
-        # 否則保留當日（避免把週一夜盤錯歸到週日）
         return d
 
     x["trade_date"] = x.apply(_map_trade_date, axis=1)
@@ -214,16 +198,16 @@ def add_trade_date(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # =========================
-# ✅ 抓取一段範圍，再用 trade_date 取「最近有效交易日」
+# ✅ 抓取一段範圍（含跨日夜盤），但只顯示「查詢日 trade_date」
 # =========================
 @st.cache_data(ttl=60 * 10, show_spinner=False)
-def fetch_tx_window(end_date: dt.date, lookback_days: int = 20) -> pd.DataFrame:
+def fetch_tx_window(end_date: dt.date, lookback_days: int = 25) -> pd.DataFrame:
     start = end_date - dt.timedelta(days=lookback_days)
     df = finmind_get(
         dataset="TaiwanFuturesDaily",
         data_id="TX",
         start_date=to_ymd(start),
-        end_date=to_ymd(end_date),
+        end_date=to_ymd(end_date + dt.timedelta(days=2)),  # ✅ 多抓 2 天，涵蓋夜盤跨日
         token=FINMIND_TOKEN,
     )
     if df.empty:
@@ -234,27 +218,30 @@ def fetch_tx_window(end_date: dt.date, lookback_days: int = 20) -> pd.DataFrame:
     return add_trade_date(df)
 
 
-def select_valid_trade_date(df_win: pd.DataFrame, target_date: dt.date) -> dt.date | None:
+def filter_by_display_mode(df_day: pd.DataFrame, mode: str) -> tuple[pd.DataFrame, str | None]:
     """
-    ✅ 選擇 <= target_date 的最近 trade_date
-    target_date 若是週末，就用週末本身當上限（自然會回到週五）
+    回傳 (df_filtered, warning_text)
+    ✅ 修正：若使用者選「僅日盤」但資料源根本沒有 regular，就不要回空白
+       → 顯示提示，並 fallback 顯示 after_market
     """
-    if df_win is None or df_win.empty:
-        return None
-    candidates = sorted({d for d in df_win["trade_date"].unique().tolist() if isinstance(d, dt.date)})
-    candidates = [d for d in candidates if d <= target_date]
-    return max(candidates) if candidates else None
-
-
-def filter_by_display_mode(df_day: pd.DataFrame, mode: str) -> pd.DataFrame:
     if df_day is None or df_day.empty:
-        return df_day
+        return df_day, None
+
+    sess = df_day.get("trading_session")
+    has_regular = False
+    if sess is not None:
+        has_regular = (sess.astype(str) == "regular").any()
+
     if mode == "僅日盤(regular)":
-        return df_day[df_day["trading_session"] == "regular"].copy()
+        if has_regular:
+            return df_day[df_day["trading_session"] == "regular"].copy(), None
+        # ✅ 來源沒有 regular（常見於 TaiwanFuturesDaily）
+        return df_day[df_day["trading_session"] == "after_market"].copy(), "⚠️ 本資料源在此交易日沒有 regular（日盤）欄位，僅提供 after_market（盤後/結算）。已自動改以 after_market 顯示，避免表格空白。"
+
     if mode == "僅夜盤(after_market)":
-        return df_day[df_day["trading_session"] == "after_market"].copy()
-    # 日盤+夜盤
-    return df_day.copy()
+        return df_day[df_day["trading_session"] == "after_market"].copy(), None
+
+    return df_day.copy(), None
 
 
 # =========================
@@ -355,66 +342,6 @@ def calc_ai_scores(main_row: pd.Series, df_all: pd.DataFrame) -> dict:
     }
 
 
-# =========================
-# 主力成本（VWAP）
-# =========================
-@st.cache_data(ttl=60 * 30, show_spinner=False)
-def fetch_tx_contract_history(end_date: dt.date, contract_yyyymm: str, lookback_days: int = 60) -> pd.DataFrame:
-    start_date = end_date - dt.timedelta(days=lookback_days)
-    df = finmind_get(
-        dataset="TaiwanFuturesDaily",
-        data_id="TX",
-        start_date=to_ymd(start_date),
-        end_date=to_ymd(end_date),
-        token=FINMIND_TOKEN,
-    )
-    if df.empty:
-        return df
-
-    df = df[df["futures_id"].astype(str) == "TX"].copy()
-    df = add_trade_date(df)
-
-    # VWAP 計算建議以日盤為主（避免夜盤跨日干擾）
-    if "trading_session" in df.columns:
-        df_reg = df[df["trading_session"] == "regular"].copy()
-        if not df_reg.empty:
-            df = df_reg
-
-    df["contract_date_str"] = df["contract_date"].astype(str)
-    df = df[df["contract_date_str"].str.fullmatch(r"\d{6}", na=False)]
-    df = df[df["contract_date_str"] == str(contract_yyyymm)]
-
-    df["close_num"] = pd.to_numeric(df.get("close", 0), errors="coerce")
-    df["settle_num"] = pd.to_numeric(df.get("settlement_price", 0), errors="coerce")
-    df["vol_num"] = pd.to_numeric(df.get("volume", 0), errors="coerce").fillna(0)
-
-    df["date_dt"] = pd.to_datetime(df["date"], errors="coerce")
-    df = df.dropna(subset=["date_dt"]).sort_values("date_dt")
-    return df
-
-
-def calc_cost_vwap(df_hist: pd.DataFrame, n: int = 20, price_col: str = "close_num") -> float | None:
-    if df_hist is None or df_hist.empty:
-        return None
-
-    x = df_hist.tail(n).copy()
-    if price_col not in x.columns:
-        return None
-
-    x = x.dropna(subset=[price_col])
-    if x.empty:
-        return None
-
-    vol_sum = float(x["vol_num"].sum())
-    if vol_sum <= 0:
-        return float(x[price_col].mean())
-
-    return float((x[price_col] * x["vol_num"]).sum() / vol_sum)
-
-
-# =========================
-# 方向強度（-100%~+100%）
-# =========================
 def calc_directional_score(close_price: float, vwap20: float | None, vol_ratio: float | None, open_price: float | None = None) -> dict:
     scores = {}
     if vwap20 is not None and vwap20 > 0:
@@ -442,53 +369,46 @@ today = dt.date.today()
 target_date = st.date_input("查詢日期（盤後）", value=today)
 
 display_mode = st.radio(
-    "盤別顯示模式（已用 trade_date 正規化）",
+    "盤別顯示模式",
     ["僅日盤(regular)", "僅夜盤(after_market)", "日盤+夜盤(區分顯示)"],
     horizontal=True,
 )
 
-with st.spinner("抓取 TX 盤後資料中..."):
+with st.spinner("抓取 TX 資料中..."):
     df_win = fetch_tx_window(end_date=target_date, lookback_days=25)
 
 if df_win is None or df_win.empty:
-    st.error("目前抓不到 TX 盤後資料（可能連續假期 / 或資料尚未更新 / 或 Token 權限問題）。")
+    st.error("目前抓不到 TX 資料（可能連續假期 / 或資料尚未更新 / 或 Token 權限問題）。")
     st.stop()
 
-valid_trade_date = select_valid_trade_date(df_win, target_date)
-if valid_trade_date is None:
-    st.error("在回溯範圍內找不到 <= 查詢日期 的有效交易日資料。")
+# ✅ 不回溯：只取「查詢日期本身」的 trade_date
+df_day_all = df_win[df_win["trade_date"] == target_date].copy()
+
+if df_day_all.empty:
+    st.error(f"❌ 查詢日期 {to_ymd(target_date)} 沒有資料（本版已設定：不回溯最近有效交易日）。請改選有資料的交易日。")
+    if debug_mode:
+        st.caption("Debug：最近 10 筆可用 trade_date：")
+        dates = sorted({d for d in df_win["trade_date"].unique().tolist() if isinstance(d, dt.date)})
+        st.write([to_ymd(d) for d in dates[-10:]])
     st.stop()
 
-# 取同一個交易日（trade_date）資料
-df_day_all = df_win[df_win["trade_date"] == valid_trade_date].copy()
-df_day = filter_by_display_mode(df_day_all, display_mode)
+# 套用顯示模式（含「僅日盤」fallback 修正）
+df_day, warn_text = filter_by_display_mode(df_day_all, display_mode)
+if warn_text:
+    st.warning(warn_text)
 
-# ✅ UI 提示：週末/非交易日
-if target_date != valid_trade_date:
-    st.warning(f"📌 你選的日期：{to_ymd(target_date)} 為非交易日/無日盤資料，本程式顯示最近有效交易日：{to_ymd(valid_trade_date)}")
-else:
-    st.success(f"✅ 交易日：{to_ymd(valid_trade_date)}")
+st.success(f"✅ 查詢日期有資料：{to_ymd(target_date)}（trade_date）")
+st.caption(f"本交易日筆數（全部盤別）：{len(df_day_all)} ｜ 目前顯示筆數：{len(df_day)}")
 
-st.caption(f"視窗資料筆數：{len(df_win)} ｜ 本交易日筆數（全部盤別）：{len(df_day_all)} ｜ 目前顯示筆數：{len(df_day)}")
-
-# =========================
-# ✅ KPI 計算：為了穩定，方向/強度基準以「日盤」優先
-# =========================
-df_for_calc = df_day_all.copy()
-if "trading_session" in df_for_calc.columns:
-    df_reg = df_for_calc[df_for_calc["trading_session"] == "regular"].copy()
-    if not df_reg.empty:
-        df_for_calc = df_reg
-
-main_row = pick_main_contract(df_for_calc)
+# KPI 計算：用 df_day_all（不受你選的顯示模式影響，避免 KPI 因切換而崩）
+main_row = pick_main_contract(df_day_all)
 if main_row is None:
     st.warning("抓到資料，但找不到可判定的『主力單一合約』（可能欄位異常）。")
-    st.dataframe(df_day, width="stretch", height=260)
+    st.dataframe(df_day, width="stretch", height=280)
     st.stop()
 
-ai = calc_ai_scores(main_row, df_for_calc)
+ai = calc_ai_scores(main_row, df_day_all)
 
-# 方向顏色
 raw_dir = str(ai.get("direction_text", "震盪/中性"))
 if "偏多" in raw_dir:
     mood_class = "bull"
@@ -500,27 +420,15 @@ else:
     mood_class = "neut"
     mood_text = "中性"
 
-# VWAP（以交易日 valid_trade_date 作為 end_date）
-main_contract = ai["main_contract"]
-df_main_hist = fetch_tx_contract_history(valid_trade_date, main_contract, lookback_days=60)
-
-vwap_20_close = calc_cost_vwap(df_main_hist, n=20, price_col="close_num")
-vwap_10_close = calc_cost_vwap(df_main_hist, n=10, price_col="close_num")
-vwap_20_settle = calc_cost_vwap(df_main_hist, n=20, price_col="settle_num")
-
-avg20_close = None
-if df_main_hist is not None and not df_main_hist.empty:
-    avg20_close = float(df_main_hist.tail(20)["close_num"].dropna().mean())
-
-# 方向強度
+# 方向強度（簡版，不再依 VWAP，避免你切盤別造成混淆；之後要再接 VWAP 我再幫你加回）
 try:
     factor_scores = calc_directional_score(
         close_price=float(main_row.get("close", 0) or 0),
-        vwap20=vwap_20_close,
+        vwap20=None,
         vol_ratio=ai.get("vol_ratio"),
         open_price=main_row.get("open"),
     )
-    WEIGHTS = {"cost": 0.45, "volume": 0.25, "intraday": 0.30}
+    WEIGHTS = {"volume": 0.55, "intraday": 0.45}
     raw_score = sum(factor_scores.get(k, 0.0) * WEIGHTS[k] for k in WEIGHTS)
     final_score_pct = int(clamp01(raw_score) * 100)
 except Exception:
@@ -593,19 +501,10 @@ with c5:
     </div>
     """, unsafe_allow_html=True)
 
-with st.expander("📌 主力成本與量能細節", expanded=True):
-    info1, info2, info3, info4, info5, info6 = st.columns(6)
-    info1.caption(f"主力合約：**{ai['main_contract']}**")
-    info2.caption(f"主力成本(10D VWAP)：**{(f'{vwap_10_close:.0f}' if vwap_10_close is not None else '—')}**")
-    info3.caption(f"主力成本(20D VWAP)：**{(f'{vwap_20_close:.0f}' if vwap_20_close is not None else '—')}**")
-    info4.caption(f"主力成本(20D settle)：**{(f'{vwap_20_settle:.0f}' if vwap_20_settle is not None else '—')}**")
-    info5.caption(f"20D 平均收盤：**{(f'{avg20_close:.0f}' if avg20_close is not None else '—')}**")
-    info6.caption(f"量能比：**{ai['vol_ratio']}x**")
-
 st.divider()
 
 # =========================
-# ✅ 表格：清楚顯示 trade_date / cal_date / session
+# 表格（清楚顯示 trade_date / cal_date / session）
 # =========================
 show_cols = [
     "trade_date", "cal_date", "trading_session",
@@ -625,13 +524,12 @@ df_single = df_show[is_single].sort_values(["trade_date", "contract_date_str", "
 df_spread = df_show[~is_single].sort_values(["trade_date", "contract_date_str", "trading_session"])
 df_show2 = pd.concat([df_single, df_spread], ignore_index=True).drop(columns=["contract_date_str"], errors="ignore")
 
-with st.expander("📊 盤後原始資料表（以 trade_date 篩選同一交易日）", expanded=False):
-    st.dataframe(df_show2, width="stretch", height=280)
+with st.expander("📊 盤後原始資料表（只顯示查詢日 trade_date）", expanded=False):
+    st.dataframe(df_show2, width="stretch", height=320)
 
 if debug_mode:
     st.divider()
-    st.subheader("🔎 Debug：候選 trade_date（<=查詢日）")
-    cand = sorted({d for d in df_win["trade_date"].unique().tolist() if isinstance(d, dt.date) and d <= target_date})
-    st.write([to_ymd(d) for d in cand][-10:])
+    st.subheader("🔎 Debug：trading_session 分布（本查詢日）")
+    st.write(df_day_all["trading_session"].value_counts(dropna=False))
     st.subheader("🔎 Debug：方向因子分數")
     st.write(factor_scores)
