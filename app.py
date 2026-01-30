@@ -42,7 +42,7 @@ st.markdown(
 <div class="app-subtitle">
 ✅ 資料基準：<b>Position（結算資料）</b><br/>
 ✅ 收盤價定義：<b>Settlement Price（官方結算價）</b><br/>
-❌ 非交易日不顯示任何資料
+
 </div>
 """,
     unsafe_allow_html=True,
