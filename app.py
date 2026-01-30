@@ -17,8 +17,8 @@ APP_TITLE = "台指期貨｜專業交易決策面板（結算 × 夜盤 × 選�
 st.markdown(
     """
 <style>
-div[data-testid="stAppViewContainer"] > .main { padding-top: 3.8rem; }
-.app-title{ font-size:2.2rem;font-weight:900;margin:0 }
+div[data-testid="stAppViewContainer"] > .main { padding-top: 3.6rem; }
+.app-title{ font-size:2.1rem;font-weight:900;margin:0 }
 .app-subtitle{ font-size:.95rem;opacity:.75;margin:.4rem 0 1rem }
 .card{
   border:1px solid rgba(255,255,255,.12);
@@ -41,7 +41,7 @@ st.markdown(
 <div class="app-title">{APP_TITLE}</div>
 <div class="app-subtitle">
 • 價格錨點：<b>Position 結算價</b><br/>
-• 夜盤僅作偏移加權，不影響結算<br/>
+• 夜盤僅作偏移加權（不影響結算）<br/>
 • 選擇權以 OI 結構判斷市場預期
 </div>
 """,
@@ -52,13 +52,14 @@ st.markdown(
 # 工具
 # =========================
 def is_trading_day(d: dt.date) -> bool:
+    # 台指期：週一 ~ 週五
     return d.weekday() < 5
 
 def clamp(v, lo, hi):
     return max(lo, min(hi, v))
 
 # =========================
-# Token
+# FinMind Token
 # =========================
 def get_finmind_token():
     return (
@@ -67,7 +68,6 @@ def get_finmind_token():
     )
 
 FINMIND_TOKEN = get_finmind_token()
-
 FINMIND_API = "https://api.finmindtrade.com/api/v4/data"
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -107,6 +107,7 @@ def fetch_position(trade_date: dt.date) -> pd.DataFrame:
     return df
 
 def pick_main_contract(df: pd.DataFrame, trade_date: dt.date):
+    df = df.copy()
     df["ym"] = pd.to_numeric(df["contract_date"], errors="coerce")
     target_ym = trade_date.year * 100 + trade_date.month
     cand = df[df["ym"] >= target_ym]
@@ -123,10 +124,12 @@ def fetch_night(trade_date: dt.date):
         trade_date.strftime("%Y-%m-%d"),
         (trade_date + dt.timedelta(days=1)).strftime("%Y-%m-%d"),
     )
+    if df.empty:
+        return df
     return df[df["trading_session"].astype(str) == "after_market"].copy()
 
 def calc_night_bias(night_df: pd.DataFrame, settlement_price: float):
-    if night_df.empty:
+    if night_df is None or night_df.empty:
         return {"score": 0.0, "text": "無夜盤資料"}
     close = float(night_df.iloc[-1]["close"])
     bias = close - settlement_price
@@ -134,40 +137,77 @@ def calc_night_bias(night_df: pd.DataFrame, settlement_price: float):
     return {"score": score, "text": f"{bias:+.0f} 點"}
 
 # =========================
-# ③ 選擇權 OI 模組
+# ③ 選擇權 OI 模組（防呆版）
 # =========================
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_options(trade_date: dt.date):
-    return finmind_get(
+    df = finmind_get(
         "TaiwanOptionDaily",
         "TXO",
         trade_date.strftime("%Y-%m-%d"),
         trade_date.strftime("%Y-%m-%d"),
     )
+    return df if df is not None else pd.DataFrame()
 
 def calc_option_bias(df: pd.DataFrame, price: float):
-    if df.empty:
+    """
+    防呆版選擇權 OI 分析：
+    - 自動辨識 Call / Put 欄位
+    - 若資料結構不符，直接停用此模組
+    """
+    if df is None or df.empty:
         return None
+
+    # 自動找 Call / Put 欄位
+    cp_col = None
+    for c in ["option_type", "call_put", "right"]:
+        if c in df.columns:
+            cp_col = c
+            break
+    if cp_col is None:
+        return None
+
+    def norm_cp(v):
+        if pd.isna(v):
+            return None
+        s = str(v).lower()
+        if s in ("c", "call"):
+            return "call"
+        if s in ("p", "put"):
+            return "put"
+        return None
+
+    if "strike_price" not in df.columns or "open_interest" not in df.columns:
+        return None
+
+    df = df.copy()
+    df["cp"] = df[cp_col].apply(norm_cp)
     df["strike"] = pd.to_numeric(df["strike_price"], errors="coerce")
     df["oi"] = pd.to_numeric(df["open_interest"], errors="coerce")
 
-    call = df[df["option_type"] == "call"]
-    put = df[df["option_type"] == "put"]
+    call = df[df["cp"] == "call"].dropna(subset=["strike", "oi"])
+    put  = df[df["cp"] == "put"].dropna(subset=["strike", "oi"])
+    if call.empty or put.empty:
+        return None
+
+    total_oi = call["oi"].sum() + put["oi"].sum()
+    if total_oi <= 0:
+        return None
 
     oi_center = (
         (call["strike"] * call["oi"]).sum() +
         (put["strike"] * put["oi"]).sum()
-    ) / (call["oi"].sum() + put["oi"].sum())
+    ) / total_oi
 
-    call_p = call.loc[call["oi"].idxmax()]["strike"]
-    put_s = put.loc[put["oi"].idxmax()]["strike"]
+    call_pressure = call.loc[call["oi"].idxmax()]["strike"]
+    put_support   = put.loc[put["oi"].idxmax()]["strike"]
 
     score = 0.6 if price > oi_center else -0.6
 
     return {
         "oi_center": oi_center,
-        "call_pressure": call_p,
-        "put_support": put_s,
+        "call_pressure": call_pressure,
+        "put_support": put_support,
         "score": score,
     }
 
@@ -182,20 +222,22 @@ if not is_trading_day(trade_date):
 
 df_pos = fetch_position(trade_date)
 if df_pos.empty:
-    st.error("❌ 查無結算資料")
+    st.error("❌ 查無結算資料（可能尚未公告）")
     st.stop()
 
 main = pick_main_contract(df_pos, trade_date)
 settlement_price = float(main["settlement_price"])
-direction = "偏多" if settlement_price > main["open"] else "偏空"
+direction = "偏多" if settlement_price > float(main.get("open", settlement_price)) else "偏空"
 
 night = calc_night_bias(fetch_night(trade_date), settlement_price)
 opt = calc_option_bias(fetch_options(trade_date), settlement_price)
 
+option_score = opt["score"] if isinstance(opt, dict) else 0.0
+
 final_score = (
     0.55 * (1 if direction == "偏多" else -1) +
     0.20 * night["score"] +
-    0.25 * (opt["score"] if opt else 0)
+    0.25 * option_score
 )
 
 final_view = "偏多" if final_score > 0.5 else "偏空" if final_score < -0.5 else "震盪"
@@ -210,7 +252,10 @@ with c1:
 with c2:
     st.markdown(f"<div class='card'><div class='card-title'>夜盤偏移</div><div class='card-value'>{night['text']}</div></div>", unsafe_allow_html=True)
 with c3:
-    st.markdown(f"<div class='card'><div class='card-title'>OI 重心</div><div class='card-value'>{opt['oi_center']:.0f}</div></div>", unsafe_allow_html=True)
+    if opt:
+        st.markdown(f"<div class='card'><div class='card-title'>OI 重心</div><div class='card-value'>{opt['oi_center']:.0f}</div></div>", unsafe_allow_html=True)
+    else:
+        st.markdown(f"<div class='card'><div class='card-title'>OI 模組</div><div class='card-value neut'>不可用</div></div>", unsafe_allow_html=True)
 with c4:
     st.markdown(f"<div class='card'><div class='card-title'>最終判斷</div><div class='card-value {cls}'>{final_view}</div></div>", unsafe_allow_html=True)
 
