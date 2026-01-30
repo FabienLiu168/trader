@@ -439,6 +439,8 @@ try:
     final_score_pct = int(clamp01(raw_score) * 100)
 except Exception:
     final_score_pct = 0
+    factor_scores = {}   # ✅ 保底避免 debug_mode 時引用不到
+
 
 direction_text = (
     "強烈偏多" if final_score_pct >= 60 else
@@ -513,14 +515,16 @@ with c5:
     """, unsafe_allow_html=True)
 
 # 額外資訊
+# 額外資訊
 with st.expander("📌 主力成本與量能細節", expanded=True):
-info1, info2, info3, info4, info5, info6 = st.columns(6)
-info1.caption(f"主力合約：**{ai['main_contract']}**")
-info2.caption(f"主力成本(10D VWAP)：**{(f'{vwap_10_close:.0f}' if vwap_10_close is not None else '—')}**")
-info3.caption(f"主力成本(20D VWAP)：**{(f'{vwap_20_close:.0f}' if vwap_20_close is not None else '—')}**")
-info4.caption(f"主力成本(20D settle)：**{(f'{vwap_20_settle:.0f}' if vwap_20_settle is not None else '—')}**")
-info5.caption(f"20D 平均收盤：**{(f'{avg20_close:.0f}' if avg20_close is not None else '—')}**")
-info6.caption(f"量能比：**{ai['vol_ratio']}x**")
+    info1, info2, info3, info4, info5, info6 = st.columns(6)
+    info1.caption(f"主力合約：**{ai['main_contract']}**")
+    info2.caption(f"主力成本(10D VWAP)：**{(f'{vwap_10_close:.0f}' if vwap_10_close is not None else '—')}**")
+    info3.caption(f"主力成本(20D VWAP)：**{(f'{vwap_20_close:.0f}' if vwap_20_close is not None else '—')}**")
+    info4.caption(f"主力成本(20D settle)：**{(f'{vwap_20_settle:.0f}' if vwap_20_settle is not None else '—')}**")
+    info5.caption(f"20D 平均收盤：**{(f'{avg20_close:.0f}' if avg20_close is not None else '—')}**")
+    info6.caption(f"量能比：**{ai['vol_ratio']}x**")
+
 
 st.divider()
 
