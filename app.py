@@ -370,6 +370,16 @@ st.markdown(
 df_opt = fetch_option_latest(trade_date)
 opt = calc_option_bias_v3(df_opt, fut_price)
 
+# === 選擇權市場狀態文字顏色判斷 ===
+opt_state = opt["state"]
+
+if "偏多" in opt_state:
+    opt_cls = "bull"
+elif "偏空" in opt_state:
+    opt_cls = "bear"
+else:
+    opt_cls = "neut"
+
 if opt is None:
     st.info("ℹ️ 選擇權資料不足（TXO 為 T+1 公告）")
 else:
@@ -380,7 +390,7 @@ else:
     with oc1:
         st.markdown(
             f"<div class='kpi-card'><div class='kpi-title'>市場狀態</div>"
-            f"<div class='kpi-value'>{opt['state']}</div>"
+            f"<div class='kpi-value {opt_cls}'>{opt_state}</div>"
             f"<div class='kpi-sub'>{opt['reason']}</div></div>",
             unsafe_allow_html=True,
         )
