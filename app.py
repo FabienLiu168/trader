@@ -51,6 +51,18 @@ div[data-testid="stAppViewContainer"] > .main { padding-top: 3.2rem; }
 .bull{color:#FF3B30}
 .bear{color:#34C759}
 .neut{color:#C7C7CC}
+
+/* 選擇權區段標題 */
+.opt-section-title{
+  font-size:2.2rem !important;   /* ⭐ 想跟期貨一樣就同數值 */
+  font-weight:900 !important;
+  margin-top:1.4rem !important;
+  margin-bottom:1.0rem !important;
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
 </style>
 """,
     unsafe_allow_html=True,
@@ -269,7 +281,11 @@ def calc_option_bias_v3(df, fut_price):
 # UI：選擇權
 # =========================
 st.divider()
-st.markdown("## 🧩 選擇權｜ΔOI × 結構 × 價格行為")
+st.markdown(
+    "<h2 class='opt-section-title'>🧩 選擇權｜ΔOI × 結構 × 價格行為</h2>",
+    unsafe_allow_html=True,
+)
+
 
 df_opt = fetch_option_latest(trade_date)
 opt = calc_option_bias_v3(df_opt, fut_price)
