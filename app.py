@@ -22,8 +22,8 @@ div[data-testid="stAppViewContainer"] > .main { padding-top: 3.2rem; }
 .app-title{ font-size:3.0rem;font-weight:900;margin-top:-50px;text-align:center;letter-spacing:0.5px;margin-bottom:2px; }
 .app-subtitle{ font-size:1.0rem;opacity:.8;margin:.45rem 0 1.1rem;text-align:center; }
 .fut-section-title{
-  font-size:1.4rem !important;   /* ⭐ 關鍵在這 */
-  font-weight:900 !important;
+  font-size:2.0rem !important;   /* ⭐ 關鍵在這 */
+  font-weight:600 !important;
   margin-top:1.2rem !important;
   margin-bottom:1.0rem !important;
   display:flex;
