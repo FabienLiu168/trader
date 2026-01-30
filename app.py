@@ -441,6 +441,14 @@ except Exception:
     final_score_pct = 0
     factor_scores = {}   # ✅ 保底避免 debug_mode 時引用不到
 
+# ✅ 強制方向強度的正負號跟原始方向一致（避免偏空卻顯示 +xx%）
+if mood_text == "偏空":
+    final_score_pct = -abs(int(final_score_pct))
+elif mood_text == "偏多":
+    final_score_pct = abs(int(final_score_pct))
+else:
+    # 中性：保留原值，但可以選擇收斂到接近 0（可選）
+    final_score_pct = int(final_score_pct)
 
 direction_text = (
     "強烈偏多" if final_score_pct >= 60 else
@@ -452,15 +460,19 @@ direction_text = (
 
 # KPI 區
 # ===== KPI 顏色邏輯 =====
-if final_score_pct >= 20:
-    mood_class = "bull"
+# ✅ 統一方向：以 ai["direction_text"] 為準，避免與 final_score_pct 打架
+raw_dir = str(ai.get("direction_text", "中性"))
+
+if "偏多" in raw_dir:
+    mood_class = "bull"   # 紅
     mood_text = "偏多"
-elif final_score_pct <= -20:
-    mood_class = "bear"
+elif "偏空" in raw_dir:
+    mood_class = "bear"   # 綠
     mood_text = "偏空"
 else:
     mood_class = "neut"
     mood_text = "中性"
+
 
 # 一致性/風險燈號
 cons_dot = "🟢" if ai["consistency_pct"] >= 70 else ("🟠" if ai["consistency_pct"] >= 45 else "🔴")
