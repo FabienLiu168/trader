@@ -202,6 +202,7 @@ def fetch_option_prev_trade_date(trade_date: dt.date) -> pd.DataFrame:
             return df
     return pd.DataFrame()
 
+
 def calc_option_market_bias_v2(df_today, df_prev, settlement_price, atm_range=2):
     if df_today is None or df_today.empty:
         return None
@@ -213,8 +214,10 @@ def calc_option_market_bias_v2(df_today, df_prev, settlement_price, atm_range=2)
 
     def norm_cp(v):
         s = str(v).lower()
-        if s.startswith("c"): return "call"
-        if s.startswith("p"): return "put"
+        if s.startswith("c"):
+            return "call"
+        if s.startswith("p"):
+            return "put"
         return None
 
     def prep(df):
@@ -222,17 +225,17 @@ def calc_option_market_bias_v2(df_today, df_prev, settlement_price, atm_range=2)
         x["cp"] = x[cp_col].apply(norm_cp)
         x["strike"] = pd.to_numeric(x["strike_price"], errors="coerce")
         x["oi"] = pd.to_numeric(x["open_interest"], errors="coerce")
-        return x.dropna(subset=["cp","strike","oi"])
+        return x.dropna(subset=["cp", "strike", "oi"])
 
     t = prep(df_today)
     p = prep(df_prev) if df_prev is not None else pd.DataFrame()
 
-    call = t[t["cp"]=="call"]
-    put  = t[t["cp"]=="put"]
+    call = t[t["cp"] == "call"]
+    put  = t[t["cp"] == "put"]
     if call.empty or put.empty:
         return None
 
-    # ✅ 關鍵修正：同 strike 合併 OI
+    # ---------- ✅ strike 合併（關鍵） ----------
     call_oi = call.groupby("strike")["oi"].sum()
     put_oi  = put.groupby("strike")["oi"].sum()
 
@@ -240,31 +243,40 @@ def calc_option_market_bias_v2(df_today, df_prev, settlement_price, atm_range=2)
     if total_oi <= 0:
         return None
 
+    # ---------- ✅ OI 共識價（已修正 Index 型別問題） ----------
+    call_strikes = call_oi.index.to_numpy(dtype=float)
+    put_strikes  = put_oi.index.to_numpy(dtype=float)
+
     oi_center = (
-        (call_oi.index * call_oi.values).sum() +
-        (put_oi.index * put_oi.values).sum()
+        (call_strikes * call_oi.values).sum() +
+        (put_strikes  * put_oi.values).sum()
     ) / total_oi
 
-    call_pressure = call_oi.idxmax()
-    put_support   = put_oi.idxmax()
+    call_pressure = float(call_oi.idxmax())
+    put_support   = float(put_oi.idxmax())
 
     # ---------- ΔOI ----------
     delta_call = delta_put = 0.0
     if not p.empty:
-        prev_call_oi = p[p["cp"]=="call"].groupby("strike")["oi"].sum()
-        prev_put_oi  = p[p["cp"]=="put"].groupby("strike")["oi"].sum()
+        prev_call_oi = p[p["cp"] == "call"].groupby("strike")["oi"].sum()
+        prev_put_oi  = p[p["cp"] == "put"].groupby("strike")["oi"].sum()
 
         atm = round(settlement_price / 50) * 50
         strikes = sorted(call_oi.index.tolist())
 
-        if not strikes:
-            return None
+        if strikes:
+            idx = strikes.index(atm) if atm in strikes else len(strikes) // 2
+            sel = strikes[max(0, idx - atm_range): idx + atm_range + 1]
 
-        idx = strikes.index(atm) if atm in strikes else len(strikes)//2
-        sel = strikes[max(0, idx-atm_range): idx+atm_range+1]
+            delta_call = (
+                call_oi.reindex(sel).fillna(0) -
+                prev_call_oi.reindex(sel).fillna(0)
+            ).sum()
 
-        delta_call = (call_oi.reindex(sel).fillna(0) - prev_call_oi.reindex(sel).fillna(0)).sum()
-        delta_put  = (put_oi.reindex(sel).fillna(0)  - prev_put_oi.reindex(sel).fillna(0)).sum()
+            delta_put = (
+                put_oi.reindex(sel).fillna(0) -
+                prev_put_oi.reindex(sel).fillna(0)
+            ).sum()
 
     # ---------- 評分 ----------
     score_structure = 1 if settlement_price > oi_center else -1 if settlement_price < oi_center else 0
@@ -280,7 +292,7 @@ def calc_option_market_bias_v2(df_today, df_prev, settlement_price, atm_range=2)
 
     score_price = 1 if settlement_price > call_pressure else -1 if settlement_price < put_support else 0
 
-    final_score = 0.35*score_structure + 0.45*score_flow + 0.20*score_price
+    final_score = 0.35 * score_structure + 0.45 * score_flow + 0.20 * score_price
 
     if final_score >= 0.5:
         bias, cls = "偏多", "bull"
