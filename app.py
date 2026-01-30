@@ -21,6 +21,13 @@ div[data-testid="stAppViewContainer"] > .main { padding-top: 3.2rem; }
 
 .app-title{ font-size:3.0rem;font-weight:900;margin-top:-50px;text-align:center;letter-spacing:0.5px;margin-bottom:2px; }
 .app-subtitle{ font-size:1.25rem;opacity:.8;margin:.45rem 0 1.1rem;text-align:center; }
+.section-title{
+  font-size:2.0rem;       /* 想多大就多大 */
+  font-weight:800;
+  margin-top:1.4rem;
+  margin-bottom:0.9rem;
+}
+
 
 .kpi-card{
   border:1px solid rgba(255,255,255,.12);
