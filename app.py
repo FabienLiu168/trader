@@ -236,3 +236,137 @@ for c in show_cols:
 
 with st.expander("📊 Position 結算原始資料表", expanded=False):
     st.dataframe(df_day_all[show_cols], height=360, width="stretch")
+
+# =========================
+# （以下為「新增」：選擇權模組，不影響既有期貨）
+# =========================
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_option_for_trade_date(trade_date: dt.date) -> pd.DataFrame:
+    df = finmind_get(
+        dataset="TaiwanOptionDaily",
+        data_id="TXO",
+        start_date=trade_date.strftime("%Y-%m-%d"),
+        end_date=trade_date.strftime("%Y-%m-%d"),
+    )
+    return df if df is not None else pd.DataFrame()
+
+
+def calc_option_market_bias(df_opt: pd.DataFrame, settlement_price: float):
+    """
+    選擇權市場偏向分析（防呆版）
+    回傳 dict 或 None
+    """
+    if df_opt is None or df_opt.empty:
+        return None
+
+    # 嘗試辨識 Call / Put 欄位
+    cp_col = None
+    for c in ["option_type", "call_put", "right"]:
+        if c in df_opt.columns:
+            cp_col = c
+            break
+    if cp_col is None:
+        return None
+
+    if "strike_price" not in df_opt.columns or "open_interest" not in df_opt.columns:
+        return None
+
+    def norm_cp(v):
+        if pd.isna(v):
+            return None
+        s = str(v).lower()
+        if s in ("c", "call"):
+            return "call"
+        if s in ("p", "put"):
+            return "put"
+        return None
+
+    x = df_opt.copy()
+    x["cp"] = x[cp_col].apply(norm_cp)
+    x["strike"] = pd.to_numeric(x["strike_price"], errors="coerce")
+    x["oi"] = pd.to_numeric(x["open_interest"], errors="coerce")
+
+    call = x[x["cp"] == "call"].dropna(subset=["strike", "oi"])
+    put  = x[x["cp"] == "put"].dropna(subset=["strike", "oi"])
+
+    if call.empty or put.empty:
+        return None
+
+    total_oi = call["oi"].sum() + put["oi"].sum()
+    if total_oi <= 0:
+        return None
+
+    # 市場共識價
+    oi_center = (
+        (call["strike"] * call["oi"]).sum() +
+        (put["strike"] * put["oi"]).sum()
+    ) / total_oi
+
+    # 壓力 / 支撐
+    call_pressure = call.loc[call["oi"].idxmax()]["strike"]
+    put_support = put.loc[put["oi"].idxmax()]["strike"]
+
+    # 偏向判斷
+    if settlement_price > oi_center + 30:
+        bias = "偏多"
+        cls = "bull"
+    elif settlement_price < oi_center - 30:
+        bias = "偏空"
+        cls = "bear"
+    else:
+        bias = "中性"
+        cls = "neut"
+
+    return {
+        "bias": bias,
+        "cls": cls,
+        "oi_center": oi_center,
+        "call_pressure": call_pressure,
+        "put_support": put_support,
+    }
+
+
+# =========================
+# UI：選擇權市場分析（新增）
+# =========================
+st.divider()
+st.subheader("🧩 選擇權市場結構分析（不影響期貨）")
+
+with st.spinner("分析選擇權市場中..."):
+    df_opt = fetch_option_for_trade_date(trade_date)
+    opt = calc_option_market_bias(df_opt, ai["tx_last_price"])
+
+if opt is None:
+    st.info("ℹ️ 本交易日選擇權資料不足，暫不顯示市場偏向")
+else:
+    c1, c2, c3, c4 = st.columns([1.4, 1.4, 1.6, 1.6], gap="small")
+
+    with c1:
+        st.markdown(
+            f"<div class='kpi-card'><div class='kpi-title'>選擇權市場偏向</div>"
+            f"<div class='kpi-value {opt['cls']}'>{opt['bias']}</div></div>",
+            unsafe_allow_html=True,
+        )
+
+    with c2:
+        st.markdown(
+            f"<div class='kpi-card'><div class='kpi-title'>OI 共識價</div>"
+            f"<div class='kpi-value'>{opt['oi_center']:.0f}</div></div>",
+            unsafe_allow_html=True,
+        )
+
+    with c3:
+        st.markdown(
+            f"<div class='kpi-card'><div class='kpi-title'>上方壓力（Call OI 最大）</div>"
+            f"<div class='kpi-value'>{opt['call_pressure']:.0f}</div></div>",
+            unsafe_allow_html=True,
+        )
+
+    with c4:
+        st.markdown(
+            f"<div class='kpi-card'><div class='kpi-title'>下方支撐（Put OI 最大）</div>"
+            f"<div class='kpi-value'>{opt['put_support']:.0f}</div></div>",
+            unsafe_allow_html=True,
+        )
+
