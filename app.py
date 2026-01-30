@@ -379,6 +379,53 @@ def calc_cost_vwap(df_hist: pd.DataFrame, n: int = 20, price_col: str = "close_n
     vwap = float((x[price_col] * x["vol_num"]).sum() / vol_sum)
     return vwap
 
+def clamp(x: float, low: float = -1.0, high: float = 1.0) -> float:
+    return max(low, min(high, x))
+
+
+def calc_directional_score(
+    close_price: float,
+    vwap20: float | None,
+    vol_ratio: float | None,
+    pcr: float | None,
+    atm_iv: float | None,
+    open_price: float | None = None,
+) -> dict:
+    scores = {}
+
+    # 1️⃣ 主力成本偏離（最重要）
+    if vwap20 and vwap20 > 0:
+        diff = (close_price - vwap20) / vwap20
+        scores["cost"] = clamp(diff * 5)   # 5 是放大係數（可微調）
+    else:
+        scores["cost"] = 0.0
+
+    # 2️⃣ 量能（大於 1 偏多，小於 1 偏空）
+    if vol_ratio:
+        scores["volume"] = clamp((vol_ratio - 1.0) * 1.2)
+    else:
+        scores["volume"] = 0.0
+
+    # 3️⃣ PCR（<1 偏多，>1 偏空）
+    if pcr:
+        scores["pcr"] = clamp((1.0 - pcr) * 1.5)
+    else:
+        scores["pcr"] = 0.0
+
+    # 4️⃣ ATM IV（過高＝風險偏空）
+    if atm_iv:
+        scores["iv"] = clamp((20 - atm_iv) / 20)  # 20% 為中性基準
+    else:
+        scores["iv"] = 0.0
+
+    # 5️⃣ 日內動能（可選）
+    if open_price and open_price > 0:
+        scores["intraday"] = clamp((close_price - open_price) / open_price * 5)
+    else:
+        scores["intraday"] = 0.0
+
+    return scores
+
 # 顯示回溯結果
 st.markdown("### 📌 TXF 盤後資料（自動回溯找最近有效交易日）")
 st.success(f"✅ 抓到資料！你選的日期：{to_ymd(target_date)} → 實際抓到資料日期：{to_ymd(valid_date)}")
