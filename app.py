@@ -189,6 +189,24 @@ def calc_ai_scores(main_row, df_all):
         "consistency_pct": int(abs(score) / 3 * 100),
     }
 
+def get_prev_trading_close(trade_date: dt.date, lookback_days=7):
+    """
+    取得最近一個『有結算資料』的交易日收盤價
+    （解決週一 / 連假問題）
+    """
+    for i in range(1, lookback_days + 1):
+        d = trade_date - dt.timedelta(days=i)
+        if d.weekday() >= 5:
+            continue
+
+        df = fetch_position_for_trade_date(d)
+        if not df.empty:
+            row = pick_main_contract_position(df, d)
+            settle = row.get("settlement_price")
+            close = row.get("close")
+            return float(settle) if settle not in (None, "", 0) else float(close or 0)
+
+    return None
 
 # =========================
 # 期貨資料實際執行
@@ -202,16 +220,22 @@ main_row = pick_main_contract_position(df_day_all, trade_date)
 ai = calc_ai_scores(main_row, df_day_all)
 fut_price = ai["tx_last_price"]
 
-# === 昨日收盤價 ===
-prev_date = trade_date - dt.timedelta(days=1)
-df_prev = fetch_position_for_trade_date(prev_date)
+# === 最近交易日收盤價（修正版）===
+prev_close = get_prev_trading_close(trade_date)
 
-prev_close = None
-if not df_prev.empty:
-    prev_row = pick_main_contract_position(df_prev, prev_date)
-    settle_prev = prev_row.get("settlement_price")
-    close_prev  = prev_row.get("close")
-    prev_close = float(settle_prev) if settle_prev not in (None, "", 0) else float(close_prev or 0)
+price_diff = None
+pct_diff = None
+price_color = "#000000"
+
+if prev_close is not None:
+    price_diff = fut_price - prev_close
+    pct_diff = (price_diff / prev_close) * 100 if prev_close != 0 else 0
+
+    if price_diff > 0:
+        price_color = "#FF3B30"  # 紅
+    elif price_diff < 0:
+        price_color = "#34C759"  # 綠
+
 
 # 價差與百分比
 price_diff = None
@@ -240,17 +264,18 @@ with c2:
         f"""
         <div class='kpi-card'>
           <div class='kpi-title'>收盤價</div>
-          <div class='kpi-value'>
+          <div class='kpi-value' style="color:{price_color}">
             {fut_price:.0f}
             <span style="font-size:1.05rem;opacity:.75;">
               ({price_diff:+.0f}，{pct_diff:+.1f}%)
             </span>
           </div>
-          <div class='kpi-sub'>Settlement</div>
+          <div class='kpi-sub'>Settlement（與最近交易日比較）</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
+
 
 with c3:
     st.markdown(f"<div class='kpi-card'><div class='kpi-title'>一致性</div><div class='kpi-value'>{ai['consistency_pct']}%</div></div>", unsafe_allow_html=True)
