@@ -12,35 +12,25 @@ import streamlit as st
 # =========================
 st.set_page_config(page_title="台指期貨 / 選擇權 AI 儀表板", layout="wide")
 
-APP_TITLE = "台指期貨 / 選擇權 AI 儀表板（Position 結算版）"
+APP_TITLE = "台指期貨 / 選擇權 AI 儀表板（Position 結算最終版）"
 
 st.markdown(
     """
 <style>
 div[data-testid="stAppViewContainer"] > .main { padding-top: 3.8rem; }
-.block-container { padding-top: 0.8rem; padding-bottom: 0.8rem; }
-header[data-testid="stHeader"] { background: transparent; }
-
-.app-title{
-  font-size: 2.15rem; font-weight: 900; line-height: 1.20;
-  margin: 0; padding-top: 0.35rem;
-}
-.app-subtitle{ font-size: 0.95rem; opacity: 0.75; margin: 0.25rem 0 0.8rem 0; }
-
+.app-title{ font-size:2.15rem;font-weight:900;margin:0 }
+.app-subtitle{ font-size:.95rem;opacity:.75;margin:.3rem 0 .9rem }
 .kpi-card{
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 14px;
-  padding: 14px 16px;
-  background: rgba(255,255,255,0.04);
-  box-shadow: 0 6px 22px rgba(0,0,0,0.18);
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:14px;padding:14px 16px;
+  background:rgba(255,255,255,.04);
+  box-shadow:0 6px 22px rgba(0,0,0,.18)
 }
-.kpi-title{ font-size: 0.95rem; opacity: 0.85; margin-bottom: 6px; }
-.kpi-value{ font-size: 2.0rem; font-weight: 800; line-height: 1.1; }
-.kpi-sub{ font-size: 0.9rem; opacity: 0.75; margin-top: 6px; }
-
-.bull { color: #FF3B30; }
-.bear { color: #34C759; }
-.neut { color: #C7C7CC; }
+.kpi-title{ font-size:.95rem;opacity:.85 }
+.kpi-value{ font-size:2rem;font-weight:800 }
+.bull{color:#FF3B30}
+.bear{color:#34C759}
+.neut{color:#C7C7CC}
 </style>
 """,
     unsafe_allow_html=True,
@@ -51,8 +41,9 @@ st.markdown(
 <div class="app-title">{APP_TITLE}</div>
 <div class="app-subtitle">
 ✅ 資料基準：<b>Position（結算資料）</b><br/>
-✅ 收盤價定義：<b>Settlement Price（結算價）</b><br/>
-❌ 不使用 after_market / regular 作為判斷
+✅ 收盤價定義：<b>Settlement Price（官方結算價）</b><br/>
+❌ 不使用 after_market / regular<br/>
+❌ 不使用 API date 當交易日
 </div>
 """,
     unsafe_allow_html=True,
@@ -100,21 +91,24 @@ def finmind_get(dataset, data_id, start_date, end_date):
     return pd.DataFrame(r.json().get("data", []))
 
 # =========================
-# 抓取 Position（結算）
+# Position 資料抓取（關鍵）
 # =========================
 @st.cache_data(ttl=600, show_spinner=False)
-def fetch_position(date: dt.date) -> pd.DataFrame:
+def fetch_position(target_date: dt.date) -> pd.DataFrame:
     df = finmind_get(
         dataset="TaiwanFuturesDaily",
         data_id="TX",
-        start_date=date.strftime("%Y-%m-%d"),
-        end_date=date.strftime("%Y-%m-%d"),
+        start_date=(target_date - dt.timedelta(days=1)).strftime("%Y-%m-%d"),
+        end_date=(target_date + dt.timedelta(days=1)).strftime("%Y-%m-%d"),
     )
     if df.empty:
         return df
 
     df = df[df["trading_session"].astype(str) == "position"].copy()
-    df["trade_date"] = pd.to_datetime(df["date"], errors="coerce").dt.date
+
+    # ❗不要相信 API date，人工定義結算日
+    df["settlement_trade_date"] = target_date
+
     return df
 
 # =========================
@@ -123,29 +117,32 @@ def fetch_position(date: dt.date) -> pd.DataFrame:
 def clamp(v, lo, hi): return max(lo, min(hi, v))
 def clamp01(x, lo=-1, hi=1): return max(lo, min(hi, x))
 
-def pick_main_contract(df):
+# =========================
+# Position 專用主力合約選擇
+# =========================
+def pick_main_contract_position(df: pd.DataFrame, target_date: dt.date):
     x = df.copy()
-    x["contract_date_str"] = x["contract_date"].astype(str)
-    x = x[x["contract_date_str"].str.fullmatch(r"\d{6}", na=False)]
-    if x.empty:
-        return None
-    x["volume_num"] = pd.to_numeric(x["volume"], errors="coerce").fillna(0)
-    return x.loc[x["volume_num"].idxmax()]
+    x["contract_ym"] = pd.to_numeric(x["contract_date"], errors="coerce")
+
+    target_ym = target_date.year * 100 + target_date.month
+
+    # 優先選 >= 結算月的最近一個
+    cand = x[x["contract_ym"] >= target_ym]
+    if not cand.empty:
+        return cand.sort_values("contract_ym").iloc[0]
+
+    # 若沒有，退回最近的
+    return x.sort_values("contract_ym").iloc[-1]
 
 # =========================
-# AI 分析（以結算價為準）
+# AI 分析（完全以結算價）
 # =========================
 def calc_ai_scores(main_row, df_all):
     open_ = float(main_row.get("open", 0) or 0)
 
-    # ✅ 結算收盤價（官方）
     settle_price = main_row.get("settlement_price")
     close_price = main_row.get("close")
-    final_close = (
-        float(settle_price)
-        if settle_price not in (None, "", 0)
-        else float(close_price or 0)
-    )
+    final_close = float(settle_price) if settle_price not in (None, "", 0) else float(close_price or 0)
 
     high_ = float(main_row.get("max", 0) or 0)
     low_ = float(main_row.get("min", 0) or 0)
@@ -190,11 +187,7 @@ if df_day_all.empty:
 st.success(f"✅ 結算日：{target_date}")
 st.caption(f"合約筆數：{len(df_day_all)}")
 
-main_row = pick_main_contract(df_day_all)
-if main_row is None:
-    st.error("找不到主力合約")
-    st.stop()
-
+main_row = pick_main_contract_position(df_day_all, target_date)
 ai = calc_ai_scores(main_row, df_day_all)
 
 mood = ai["direction_text"]
@@ -216,20 +209,28 @@ with c5:
 st.divider()
 
 # =========================
-# 原始資料表（結算）
+# 原始資料表（Position 結算）
 # =========================
 show_cols = [
-    "trade_date", "trading_session", "futures_id", "contract_date",
-    "open", "close", "settlement_price", "volume", "open_interest"
+    "settlement_trade_date",
+    "trading_session",
+    "futures_id",
+    "contract_date",
+    "open",
+    "close",
+    "settlement_price",
+    "volume",
+    "open_interest",
 ]
+
 for c in show_cols:
     if c not in df_day_all.columns:
         df_day_all[c] = None
 
 with st.expander("📊 Position 結算原始資料表", expanded=False):
-    st.dataframe(df_day_all[show_cols], height=340, width="stretch")
+    st.dataframe(df_day_all[show_cols], height=360, width="stretch")
 
 if debug_mode:
     st.divider()
-    st.subheader("🔎 Debug：trading_session 分布")
-    st.write(df_day_all["trading_session"].value_counts())
+    st.subheader("🔎 Debug：Position 筆數")
+    st.write(len(df_day_all))
