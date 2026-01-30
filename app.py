@@ -22,14 +22,15 @@ div[data-testid="stAppViewContainer"] > .main { padding-top: 3.2rem; }
 .app-title{ font-size:3.0rem;font-weight:900;margin-top:-50px;text-align:center;letter-spacing:0.5px;margin-bottom:2px; }
 .app-subtitle{ font-size:1.0rem;opacity:.8;margin:.45rem 0 1.1rem;text-align:center; }
 .fut-section-title{
-  font-size:0.2rem;     /* ⭐ 這行就是控制大小 */
-  font-weight:900;
-  margin-top:1.2rem;
-  margin-bottom:1.0rem;
+  font-size:2.4rem !important;   /* ⭐ 關鍵在這 */
+  font-weight:900 !important;
+  margin-top:1.2rem !important;
+  margin-bottom:1.0rem !important;
   display:flex;
   align-items:center;
-  gap:10px;             /* icon 與文字距離 */
+  gap:10px;
 }
+
 
 .kpi-card{
   border:1px solid rgba(255,255,255,.12);
