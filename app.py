@@ -10,35 +10,18 @@ import streamlit as st
 # =========================
 # 基本設定
 # =========================
-st.set_page_config(
-    page_title="台指期貨 / 選擇權 AI 儀表板",
-    layout="wide",
-)
+st.set_page_config(page_title="台指期貨 / 選擇權 AI 儀表板", layout="wide")
 
 APP_TITLE = "台指期貨 / 選擇權 AI 儀表板（Position 結算最終版）"
 
-# =========================
-# UI Style（✅ 高度一致修正版）
-# =========================
 st.markdown(
     """
 <style>
-div[data-testid="stAppViewContainer"] > .main {
-  padding-top: 3.6rem;
-}
+div[data-testid="stAppViewContainer"] > .main { padding-top: 3.2rem; }
 
-.app-title{
-  font-size:2.0rem;
-  font-weight:900;
-  margin:0;
-}
-.app-subtitle{
-  font-size:.95rem;
-  opacity:.75;
-  margin:.3rem 0 1.1rem;
-}
+.app-title{ font-size:2.1rem;font-weight:900;margin:0 }
+.app-subtitle{ font-size:.95rem;opacity:.75;margin:.35rem 0 .9rem }
 
-/* ===== KPI Card 統一規格 ===== */
 .kpi-card{
   border:1px solid rgba(255,255,255,.12);
   border-radius:14px;
@@ -46,47 +29,24 @@ div[data-testid="stAppViewContainer"] > .main {
   background:rgba(255,255,255,.04);
   box-shadow:0 6px 22px rgba(0,0,0,.18);
 
-  min-height:132px;                /* ✅ 高度統一 */
+  min-height:132px;
   display:flex;
   flex-direction:column;
   justify-content:space-between;
 }
 
-.kpi-title{
-  font-size:.95rem;
-  opacity:.85;
-}
+.kpi-title{ font-size:.95rem;opacity:.85 }
+.kpi-value{ font-size:2rem;font-weight:800;line-height:1.1 }
+.kpi-sub{ font-size:.8rem;opacity:.65;min-height:1.2em }
 
-.kpi-value{
-  font-size:2rem;
-  font-weight:800;
-  line-height:1.1;
-}
-
-.kpi-sub{
-  font-size:.8rem;
-  opacity:.65;
-  min-height:1.2em;               /* ✅ 副標固定占位 */
-}
-
-/* ===== 色系 ===== */
-.bull{ color:#FF3B30; }
-.bear{ color:#34C759; }
-.neut{ color:#C7C7CC; }
-
-.section-title{
-  font-size:1.15rem;
-  font-weight:800;
-  margin:.6rem 0 .4rem;
-}
+.bull{color:#FF3B30}
+.bear{color:#34C759}
+.neut{color:#C7C7CC}
 </style>
 """,
     unsafe_allow_html=True,
 )
 
-# =========================
-# Header
-# =========================
 st.markdown(
     f"""
 <div class="app-title">{APP_TITLE}</div>
@@ -100,10 +60,13 @@ st.markdown(
 )
 
 # =========================
-# 工具：交易日判斷
+# 工具
 # =========================
 def is_trading_day(d: dt.date) -> bool:
     return d.weekday() < 5
+
+def clamp(v, lo, hi):
+    return max(lo, min(hi, v))
 
 # =========================
 # Token
@@ -141,7 +104,7 @@ def finmind_get(dataset, data_id, start_date, end_date):
     return pd.DataFrame(r.json().get("data", []))
 
 # =========================
-# Position 期貨資料
+# 期貨 Position（完全保留原邏輯）
 # =========================
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_position_for_trade_date(trade_date: dt.date) -> pd.DataFrame:
@@ -153,43 +116,35 @@ def fetch_position_for_trade_date(trade_date: dt.date) -> pd.DataFrame:
     )
     if df.empty:
         return df
-
     df = df[df["trading_session"].astype(str) == "position"].copy()
     df["trade_date"] = trade_date
     return df
-
-def clamp(v, lo, hi):
-    return max(lo, min(hi, v))
 
 def pick_main_contract_position(df: pd.DataFrame, trade_date: dt.date):
     x = df.copy()
     x["contract_ym"] = pd.to_numeric(x["contract_date"], errors="coerce")
     target_ym = trade_date.year * 100 + trade_date.month
     cand = x[x["contract_ym"] >= target_ym]
-    return cand.sort_values("contract_ym").iloc[0] if not cand.empty else x.sort_values("contract_ym").iloc[-1]
+    if not cand.empty:
+        return cand.sort_values("contract_ym").iloc[0]
+    return x.sort_values("contract_ym").iloc[-1]
 
 def calc_ai_scores(main_row, df_all):
     open_ = float(main_row.get("open", 0) or 0)
     settle = main_row.get("settlement_price")
     close = main_row.get("close")
     final_close = float(settle) if settle not in (None, "", 0) else float(close or 0)
-
     high_ = float(main_row.get("max", 0) or 0)
-    low_  = float(main_row.get("min", 0) or 0)
-
+    low_ = float(main_row.get("min", 0) or 0)
     spread = final_close - open_
     range_ = max(0.0, high_ - low_)
-
     vol = float(pd.to_numeric(main_row.get("volume", 0), errors="coerce") or 0)
     vol_med = max(float(pd.to_numeric(df_all["volume"], errors="coerce").median() or 1), 1)
     vol_ratio = vol / vol_med
-
     momentum = clamp(spread / 100.0, -3, 3)
     vol_score = clamp((vol_ratio - 1) * 2, -2, 2)
-
     final = momentum * 0.7 + vol_score * 0.3
     direction = "偏多" if final > 1 else "偏空" if final < -1 else "中性"
-
     return {
         "direction_text": direction,
         "tx_last_price": final_close,
@@ -197,7 +152,6 @@ def calc_ai_scores(main_row, df_all):
         "tx_range_points": range_,
         "consistency_pct": int(abs(final) / 3 * 100),
         "risk_score": int(clamp(range_ / 3, 0, 100)),
-        "main_contract": str(main_row.get("contract_date", "")),
     }
 
 # =========================
@@ -206,12 +160,12 @@ def calc_ai_scores(main_row, df_all):
 trade_date = st.date_input("查詢交易日（結算）", value=dt.date.today())
 
 if not is_trading_day(trade_date):
-    st.warning(f"📅 {trade_date} 為非交易日（週六 / 週日），不顯示任何資料。")
+    st.warning("📅 非交易日（週六 / 週日），不顯示任何資料")
     st.stop()
 
 df_day_all = fetch_position_for_trade_date(trade_date)
 if df_day_all.empty:
-    st.error(f"❌ {trade_date} 尚無結算資料")
+    st.error("❌ 無期貨結算資料")
     st.stop()
 
 main_row = pick_main_contract_position(df_day_all, trade_date)
@@ -219,103 +173,112 @@ ai = calc_ai_scores(main_row, df_day_all)
 
 cls = "bull" if ai["direction_text"] == "偏多" else "bear" if ai["direction_text"] == "偏空" else "neut"
 
-st.markdown("### 📈 台指期貨｜結算方向判斷")
-
+st.markdown("## 📈 台指期貨｜結算方向判斷")
 c1, c2, c3, c4, c5 = st.columns(5, gap="small")
 
-def card(title, value, sub="", cls=""):
-    return f"""
-    <div class='kpi-card'>
-      <div class='kpi-title'>{title}</div>
-      <div class='kpi-value {cls}'>{value}</div>
-      <div class='kpi-sub'>{sub if sub else '&nbsp;'}</div>
-    </div>
-    """
-
-with c1: st.markdown(card("方向", ai["direction_text"], cls=cls), unsafe_allow_html=True)
-with c2: st.markdown(card("收盤價（結算）", f"{ai['tx_last_price']:.0f}"), unsafe_allow_html=True)
-with c3: st.markdown(card("一致性", f"{ai['consistency_pct']}%"), unsafe_allow_html=True)
-with c4: st.markdown(card("風險", f"{ai['risk_score']}/100"), unsafe_allow_html=True)
-with c5: st.markdown(card("日變化", f"{ai['tx_spread_points']:+.0f}", cls=cls), unsafe_allow_html=True)
+with c1:
+    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>方向</div><div class='kpi-value {cls}'>{ai['direction_text']}</div><div class='kpi-sub'>&nbsp;</div></div>", unsafe_allow_html=True)
+with c2:
+    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>收盤價（結算）</div><div class='kpi-value'>{ai['tx_last_price']:.0f}</div><div class='kpi-sub'>&nbsp;</div></div>", unsafe_allow_html=True)
+with c3:
+    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>一致性</div><div class='kpi-value'>{ai['consistency_pct']}%</div><div class='kpi-sub'>&nbsp;</div></div>", unsafe_allow_html=True)
+with c4:
+    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>風險</div><div class='kpi-value'>{ai['risk_score']}/100</div><div class='kpi-sub'>&nbsp;</div></div>", unsafe_allow_html=True)
+with c5:
+    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>日變化</div><div class='kpi-value {cls}'>{ai['tx_spread_points']:+.0f}</div><div class='kpi-sub'>&nbsp;</div></div>", unsafe_allow_html=True)
 
 # =========================
-# 選擇權模組（你現有邏輯可直接接）
+# 選擇權（安全完整版）
 # =========================
-# =========================
-# UI：選擇權決策卡片（接入分析結果）
-# =========================
+def normalize_cp(v):
+    if pd.isna(v):
+        return None
+    s = str(v).strip().lower()
+    if s in ("c", "call", "買權"):
+        return "call"
+    if s in ("p", "put", "賣權"):
+        return "put"
+    return None
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_option_latest_valid(trade_date: dt.date):
+    for i in range(1, 6):
+        d = trade_date - dt.timedelta(days=i)
+        if d.weekday() >= 5:
+            continue
+        df = finmind_get(
+            dataset="TaiwanOptionDaily",
+            data_id="TXO",
+            start_date=d.strftime("%Y-%m-%d"),
+            end_date=d.strftime("%Y-%m-%d"),
+        )
+        if df is not None and not df.empty:
+            df["option_trade_date"] = d
+            return df
+    return pd.DataFrame()
+
+def calc_option_market_bias(df_opt: pd.DataFrame, fut_price: float):
+    if df_opt is None or df_opt.empty:
+        return None
+    cp_col = None
+    for c in ["option_type", "call_put", "right"]:
+        if c in df_opt.columns:
+            cp_col = c
+            break
+    if cp_col is None:
+        return None
+    if "strike_price" not in df_opt.columns or "open_interest" not in df_opt.columns:
+        return None
+    x = df_opt.copy()
+    x["cp"] = x[cp_col].apply(normalize_cp)
+    x["strike"] = pd.to_numeric(x["strike_price"], errors="coerce")
+    x["oi"] = pd.to_numeric(x["open_interest"], errors="coerce")
+    x = x.dropna(subset=["cp", "strike", "oi"])
+    if x.empty:
+        return None
+    call = x[x["cp"] == "call"]
+    put  = x[x["cp"] == "put"]
+    if call.empty or put.empty:
+        return None
+    total_oi = call["oi"].sum() + put["oi"].sum()
+    oi_center = (
+        (call["strike"] * call["oi"]).sum() +
+        (put["strike"] * put["oi"]).sum()
+    ) / total_oi
+    call_pressure = call.loc[call["oi"].idxmax()]["strike"]
+    put_support   = put.loc[put["oi"].idxmax()]["strike"]
+    if fut_price > oi_center + 30:
+        bias, cls = "偏多", "bull"
+    elif fut_price < oi_center - 30:
+        bias, cls = "偏空", "bear"
+    else:
+        bias, cls = "中性", "neut"
+    return {
+        "bias": bias,
+        "cls": cls,
+        "oi_center": oi_center,
+        "call_pressure": call_pressure,
+        "put_support": put_support,
+        "option_trade_date": df_opt["option_trade_date"].iloc[0],
+    }
+
 st.divider()
-# =========================
-# 選擇權分析結果（防呆初始化）
-# =========================
-opt = None  # ⭐ 關鍵：先宣告，避免 NameError
+st.markdown("## 🧩 選擇權｜結構 × OI × 價格確認")
 
-with st.spinner("分析選擇權市場中..."):
-    try:
-        df_opt_today = fetch_option_for_trade_date(trade_date)
-        df_opt_prev = fetch_option_for_trade_date(trade_date - dt.timedelta(days=1))
-
-        if (
-            df_opt_today is not None and not df_opt_today.empty and
-            df_opt_prev is not None and not df_opt_prev.empty
-        ):
-            opt = calc_option_market_bias_v2(
-                df_opt_today,
-                df_opt_prev,
-                ai["tx_last_price"],
-            )
-    except Exception as e:
-        opt = None
-        st.caption(f"⚠️ 選擇權分析暫時略過（{type(e).__name__}）")
-
-st.markdown("### 🧩 選擇權｜結構 × ΔOI × 價格確認")
-
-# 這裡假設你已經算好 opt（dict 或 None）
-# 例如：
-# opt = calc_option_market_bias_v2(...)
+df_opt = fetch_option_latest_valid(trade_date)
+opt = calc_option_market_bias(df_opt, ai["tx_last_price"])
 
 if opt is None:
-    st.info("ℹ️ 本交易日選擇權資料不足，暫不顯示市場結構判斷")
+    st.info("ℹ️ 近期無完整選擇權 OI 資料（FinMind TXO 為 T+1）")
 else:
+    st.caption(f"📅 選擇權資料日：{opt['option_trade_date']}")
     oc1, oc2, oc3, oc4 = st.columns(4, gap="small")
 
     with oc1:
-        st.markdown(
-            card(
-                "選擇權方向",
-                opt["bias"],
-                sub=f"Score {opt['score']:+.2f}",
-                cls=opt["cls"],
-            ),
-            unsafe_allow_html=True,
-        )
-
+        st.markdown(f"<div class='kpi-card'><div class='kpi-title'>市場偏向</div><div class='kpi-value {opt['cls']}'>{opt['bias']}</div><div class='kpi-sub'>OI 結構</div></div>", unsafe_allow_html=True)
     with oc2:
-        st.markdown(
-            card(
-                "OI 共識價",
-                f"{opt['oi_center']:.0f}",
-                sub="市場籌碼重心",
-            ),
-            unsafe_allow_html=True,
-        )
-
+        st.markdown(f"<div class='kpi-card'><div class='kpi-title'>OI 共識價</div><div class='kpi-value'>{opt['oi_center']:.0f}</div><div class='kpi-sub'>加權中心</div></div>", unsafe_allow_html=True)
     with oc3:
-        st.markdown(
-            card(
-                "上方壓力（Call OI）",
-                f"{opt['call_pressure']:.0f}",
-                sub=f"ΔCall OI {opt['delta_call']:+.0f}",
-            ),
-            unsafe_allow_html=True,
-        )
-
+        st.markdown(f"<div class='kpi-card'><div class='kpi-title'>上方壓力</div><div class='kpi-value'>{opt['call_pressure']:.0f}</div><div class='kpi-sub'>Call OI 最大</div></div>", unsafe_allow_html=True)
     with oc4:
-        st.markdown(
-            card(
-                "下方支撐（Put OI）",
-                f"{opt['put_support']:.0f}",
-                sub=f"ΔPut OI {opt['delta_put']:+.0f}",
-            ),
-            unsafe_allow_html=True,
-        )
+        st.markdown(f"<div class='kpi-card'><div class='kpi-title'>下方支撐</div><div class='kpi-value'>{opt['put_support']:.0f}</div><div class='kpi-sub'>Put OI 最大</div></div>", unsafe_allow_html=True)
