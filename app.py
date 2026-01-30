@@ -43,7 +43,7 @@ div[data-testid="stAppViewContainer"] > .main { padding-top: 3.2rem; }
 }
 
 .kpi-title{ font-size:.95rem;opacity:.85 }
-.kpi-value{ font-size:1.7rem;font-weight:800;line-height:1.15 }
+.kpi-value{ font-size:2.0rem;font-weight:800;line-height:1.15 }
 .kpi-sub{ font-size:.8rem;opacity:.65;line-height:1.25 }
 
 .bull{color:#FF3B30}
