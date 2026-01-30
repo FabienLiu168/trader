@@ -241,7 +241,58 @@ with c5: st.markdown(card("日變化", f"{ai['tx_spread_points']:+.0f}", cls=cls
 # =========================
 # 選擇權模組（你現有邏輯可直接接）
 # =========================
+# =========================
+# UI：選擇權決策卡片（接入分析結果）
+# =========================
 st.divider()
 st.markdown("### 🧩 選擇權｜結構 × ΔOI × 價格確認")
 
-st.info("選擇權分析區塊 UI 已與期貨完全對齊，邏輯維持你目前版本即可直接套入。")
+# 這裡假設你已經算好 opt（dict 或 None）
+# 例如：
+# opt = calc_option_market_bias_v2(...)
+
+if opt is None:
+    st.info("ℹ️ 本交易日選擇權資料不足，暫不顯示市場結構判斷")
+else:
+    oc1, oc2, oc3, oc4 = st.columns(4, gap="small")
+
+    with oc1:
+        st.markdown(
+            card(
+                "選擇權方向",
+                opt["bias"],
+                sub=f"Score {opt['score']:+.2f}",
+                cls=opt["cls"],
+            ),
+            unsafe_allow_html=True,
+        )
+
+    with oc2:
+        st.markdown(
+            card(
+                "OI 共識價",
+                f"{opt['oi_center']:.0f}",
+                sub="市場籌碼重心",
+            ),
+            unsafe_allow_html=True,
+        )
+
+    with oc3:
+        st.markdown(
+            card(
+                "上方壓力（Call OI）",
+                f"{opt['call_pressure']:.0f}",
+                sub=f"ΔCall OI {opt['delta_call']:+.0f}",
+            ),
+            unsafe_allow_html=True,
+        )
+
+    with oc4:
+        st.markdown(
+            card(
+                "下方支撐（Put OI）",
+                f"{opt['put_support']:.0f}",
+                sub=f"ΔPut OI {opt['delta_put']:+.0f}",
+            ),
+            unsafe_allow_html=True,
+        )
