@@ -158,7 +158,10 @@ def calc_ai_scores(main_row, df_all):
     final_close = float(settle) if settle not in (None, "", 0) else float(close or 0)
     high_ = float(main_row.get("max", 0) or 0)
     low_ = float(main_row.get("min", 0) or 0)
-    spread = final_close - open_
+    high_ = float(main_row.get("max", 0) or 0)
+    low_  = float(main_row.get("min", 0) or 0)
+    day_range = abs(high_ - low_)   # ⭐ 日振幅
+
     range_ = max(0.0, high_ - low_)
     vol = float(pd.to_numeric(main_row.get("volume", 0), errors="coerce") or 0)
     vol_med = max(float(pd.to_numeric(df_all["volume"], errors="coerce").median() or 1), 1)
@@ -166,13 +169,14 @@ def calc_ai_scores(main_row, df_all):
 
     direction = "偏多" if score > 0.8 else "偏空" if score < -0.8 else "中性"
 
-    return {
-        "direction_text": direction,
-        "tx_last_price": final_close,
-        "tx_spread_points": spread,
-        "risk_score": int(clamp(range_ / 3, 0, 100)),
-        "consistency_pct": int(abs(score) / 3 * 100),
-    }
+return {
+    "direction_text": direction,
+    "tx_last_price": final_close,
+    "tx_spread_points": spread,          # 原本留著（如果你其他地方用）
+    "day_range": int(day_range),          # ⭐ 新增：日振幅
+    "risk_score": int(clamp(range_ / 3, 0, 100)),
+    "consistency_pct": int(abs(score) / 3 * 100),
+}
 
 # =========================
 # 期貨資料實際執行
@@ -185,6 +189,24 @@ if df_day_all.empty:
 main_row = pick_main_contract_position(df_day_all, trade_date)
 ai = calc_ai_scores(main_row, df_day_all)
 fut_price = ai["tx_last_price"]
+
+# === 昨日收盤價 ===
+prev_date = trade_date - dt.timedelta(days=1)
+df_prev = fetch_position_for_trade_date(prev_date)
+
+prev_close = None
+if not df_prev.empty:
+    prev_row = pick_main_contract_position(df_prev, prev_date)
+    settle_prev = prev_row.get("settlement_price")
+    close_prev  = prev_row.get("close")
+    prev_close = float(settle_prev) if settle_prev not in (None, "", 0) else float(close_prev or 0)
+
+# 價差與百分比
+price_diff = None
+pct_diff = None
+if prev_close:
+    price_diff = fut_price - prev_close
+    pct_diff = price_diff / prev_close * 100
 
 # =========================
 # UI：台指期貨
@@ -202,13 +224,20 @@ c1, c2, c3, c4, c5 = st.columns([1.6,1.6,1.2,1.2,1.4], gap="small")
 with c1:
     st.markdown(f"<div class='kpi-card'><div class='kpi-title'>方向</div><div class='kpi-value {cls}'>{mood}</div><div class='kpi-sub'>結算方向判斷</div></div>", unsafe_allow_html=True)
 with c2:
-    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>收盤價</div><div class='kpi-value'>{fut_price:.0f}</div><div class='kpi-sub'>Settlement</div></div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>收盤價</div><div class='kpi-value'>
+  {fut_price:.0f}
+  <span style="font-size:1.05rem;opacity:.75;">
+    ({price_diff:+.0f}，{pct_diff:+.1f}%)
+  </span>
+</div>
+<div class='kpi-sub'>Settlement</div></div>", unsafe_allow_html=True)
 with c3:
     st.markdown(f"<div class='kpi-card'><div class='kpi-title'>一致性</div><div class='kpi-value'>{ai['consistency_pct']}%</div></div>", unsafe_allow_html=True)
 with c4:
     st.markdown(f"<div class='kpi-card'><div class='kpi-title'>風險</div><div class='kpi-value'>{ai['risk_score']}/100</div></div>", unsafe_allow_html=True)
 with c5:
-    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>日變化</div><div class='kpi-value {cls}'>{ai['tx_spread_points']:+.0f}</div></div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>日震幅</div><div class='kpi-value'>{ai['day_range']}</div>
+<div class='kpi-sub'>最高 - 最低</div></div>", unsafe_allow_html=True)
 
 # =========================
 # 選擇權 V3（ΔOI + 結構 + 價格）
