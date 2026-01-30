@@ -179,7 +179,11 @@ fut_price = ai["tx_last_price"]
 # =========================
 # UI：台指期貨
 # =========================
-st.markdown("## 📈 台指期貨｜結算方向判斷")
+st.markdown(
+    "<h2 class='section-title'>📈 台指期貨｜結算方向判斷</h2>",
+    unsafe_allow_html=True,
+)
+
 
 mood = ai["direction_text"]
 cls = "bull" if mood == "偏多" else "bear" if mood == "偏空" else "neut"
