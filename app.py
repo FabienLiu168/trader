@@ -16,7 +16,9 @@ st.set_page_config(page_title="台指期貨 / 選擇權 AI 儀表板", layout="w
 
 APP_TITLE = "台指期貨 / 選擇權 AI 儀表板（第二階段：真實盤後資料接入）"
 st.title(APP_TITLE)
-st.markdown("""
+
+st.markdown(
+    """
 <style>
 /* 讓整體上方留白變小，避免畫面浪費 */
 .block-container { padding-top: 1.0rem; padding-bottom: 0.8rem; }
@@ -59,8 +61,9 @@ st.markdown("""
 /* 讓 dataframe 不要把畫面撐太長：可視區域內顯示 */
 [data-testid="stDataFrame"] { border-radius: 12px; overflow: hidden; }
 </style>
-""", unsafe_allow_html=True)
-
+""",
+    unsafe_allow_html=True,
+)
 
 # Debug 開關：可用網址加參數 ?debug=1
 params = st.query_params
@@ -143,7 +146,7 @@ def to_ymd(d: dt.date) -> str:
 
 
 def clamp(v: float, lo: float, hi: float) -> float:
-    """通用夾限（給你原本 calc_ai_scores 用）"""
+    """通用夾限（給 calc_ai_scores 用）"""
     return max(lo, min(hi, v))
 
 
@@ -159,7 +162,7 @@ def is_trading_data_ok(df: pd.DataFrame) -> bool:
     return need_cols.issubset(set(df.columns))
 
 
-def backtrack_find_valid_date(target_date: dt.date, max_back_days: int = 14) -> tuple[dt.date | None, pd.DataFrame]:
+def backtrack_find_valid_date(target_date: dt.date, max_back_days: int = 14):
     for i in range(max_back_days + 1):
         d = target_date - dt.timedelta(days=i)
         s = to_ymd(d)
@@ -179,7 +182,7 @@ def backtrack_find_valid_date(target_date: dt.date, max_back_days: int = 14) -> 
 # =========================
 # 主力合約選擇 + AI 分數
 # =========================
-def pick_main_contract(df: pd.DataFrame) -> pd.Series | None:
+def pick_main_contract(df: pd.DataFrame):
     if df.empty:
         return None
 
@@ -311,7 +314,7 @@ def fetch_tx_contract_history(end_date: dt.date, contract_yyyymm: str, lookback_
     return df
 
 
-def calc_cost_vwap(df_hist: pd.DataFrame, n: int = 20, price_col: str = "close_num") -> float | None:
+def calc_cost_vwap(df_hist: pd.DataFrame, n: int = 20, price_col: str = "close_num"):
     if df_hist is None or df_hist.empty:
         return None
 
@@ -335,40 +338,35 @@ def calc_cost_vwap(df_hist: pd.DataFrame, n: int = 20, price_col: str = "close_n
 # =========================
 def calc_directional_score(
     close_price: float,
-    vwap20: float | None,
-    vol_ratio: float | None,
-    pcr: float | None,
-    atm_iv: float | None,
-    open_price: float | None = None,
+    vwap20,
+    vol_ratio,
+    pcr,
+    atm_iv,
+    open_price=None,
 ) -> dict:
     scores = {}
 
-    # 主力成本偏離
     if vwap20 is not None and vwap20 > 0:
         diff = (close_price - vwap20) / vwap20
         scores["cost"] = clamp01(diff * 5.0)
     else:
         scores["cost"] = 0.0
 
-    # 量能（>1 偏多）
     if vol_ratio is not None:
         scores["volume"] = clamp01((float(vol_ratio) - 1.0) * 1.2)
     else:
         scores["volume"] = 0.0
 
-    # PCR（尚未接：先給 0）
     if pcr is not None:
         scores["pcr"] = clamp01((1.0 - float(pcr)) * 1.5)
     else:
         scores["pcr"] = 0.0
 
-    # IV（尚未接：先給 0）
     if atm_iv is not None:
         scores["iv"] = clamp01((20.0 - float(atm_iv)) / 20.0)
     else:
         scores["iv"] = 0.0
 
-    # 日內動能
     if open_price is not None and float(open_price) > 0:
         scores["intraday"] = clamp01((close_price - float(open_price)) / float(open_price) * 5.0)
     else:
@@ -391,12 +389,10 @@ if valid_date is None or df_tx.empty:
     st.error("目前抓不到 TX 盤後資料（可能連續假期 / 或資料尚未更新 / 或 Token 權限問題）。")
     st.stop()
 
-# 顯示回溯結果
 st.markdown("### 📌 TXF 盤後資料（自動回溯找最近有效交易日）")
 st.success(f"✅ 抓到資料！你選的日期：{to_ymd(target_date)} → 實際抓到資料日期：{to_ymd(valid_date)}")
 st.caption(f"筆數：{len(df_tx)}")
 
-# 主力與 AI
 main_row = pick_main_contract(df_tx)
 if main_row is None:
     st.warning("抓到資料，但找不到可判定的『主力單一合約』（可能資料結構變更或欄位異常）。")
@@ -405,7 +401,6 @@ if main_row is None:
 
 ai = calc_ai_scores(main_row, df_tx)
 
-# 主力成本
 main_contract = ai["main_contract"]
 df_main_hist = fetch_tx_contract_history(valid_date, main_contract, lookback_days=60)
 
@@ -417,14 +412,14 @@ avg20_close = None
 if df_main_hist is not None and not df_main_hist.empty:
     avg20_close = float(df_main_hist.tail(20)["close_num"].dropna().mean())
 
-# ✅ 先算 final_score_pct（避免 NameError / 0 值問題）
+# ✅ 先算 final_score_pct
 try:
     factor_scores = calc_directional_score(
         close_price=float(main_row.get("close", 0) or 0),
         vwap20=vwap_20_close,
         vol_ratio=ai.get("vol_ratio"),
-        pcr=None,       # TXO 尚未接入，先 None
-        atm_iv=None,    # TXO 尚未接入，先 None
+        pcr=None,
+        atm_iv=None,
         open_price=main_row.get("open"),
     )
 
@@ -432,22 +427,33 @@ try:
         "cost": 0.45,
         "volume": 0.25,
         "intraday": 0.30,
-        # pcr/iv 後續接 TXO 再加回來
     }
 
-    raw_score = sum(factor_scores.get(k, 0.0) * WEIGHTS[k] for k in WEIGHTS)
+    raw_score = sum(float(factor_scores.get(k, 0.0)) * float(WEIGHTS[k]) for k in WEIGHTS)
     final_score_pct = int(clamp01(raw_score) * 100)
+
 except Exception:
     final_score_pct = 0
-    factor_scores = {}   # ✅ 保底避免 debug_mode 時引用不到
+    factor_scores = {}
 
-# ✅ 強制方向強度的正負號跟原始方向一致（避免偏空卻顯示 +xx%）
+# ✅ 統一方向：以 ai["direction_text"] 為準（先決定 mood_text/mood_class）
+raw_dir = str(ai.get("direction_text", "中性"))
+if "偏多" in raw_dir:
+    mood_class = "bull"
+    mood_text = "偏多"
+elif "偏空" in raw_dir:
+    mood_class = "bear"
+    mood_text = "偏空"
+else:
+    mood_class = "neut"
+    mood_text = "中性"
+
+# ✅ 強制方向強度正負號與原始方向一致
 if mood_text == "偏空":
     final_score_pct = -abs(int(final_score_pct))
 elif mood_text == "偏多":
     final_score_pct = abs(int(final_score_pct))
 else:
-    # 中性：保留原值，但可以選擇收斂到接近 0（可選）
     final_score_pct = int(final_score_pct)
 
 direction_text = (
@@ -458,76 +464,73 @@ direction_text = (
     "強烈偏空"
 )
 
-# KPI 區
-# ===== KPI 顏色邏輯 =====
-# ✅ 統一方向：以 ai["direction_text"] 為準，避免與 final_score_pct 打架
-raw_dir = str(ai.get("direction_text", "中性"))
-
-if "偏多" in raw_dir:
-    mood_class = "bull"   # 紅
-    mood_text = "偏多"
-elif "偏空" in raw_dir:
-    mood_class = "bear"   # 綠
-    mood_text = "偏空"
-else:
-    mood_class = "neut"
-    mood_text = "中性"
-
-
 # 一致性/風險燈號
 cons_dot = "🟢" if ai["consistency_pct"] >= 70 else ("🟠" if ai["consistency_pct"] >= 45 else "🔴")
 risk_dot = "🔴" if ai["risk_score"] >= 70 else ("🟠" if ai["risk_score"] >= 45 else "🟢")
 
-# ===== KPI 區（頂部卡片：單螢幕設計）=====
+# KPI 區（頂部卡片）
 c1, c2, c3, c4, c5 = st.columns([1.6, 1.6, 1.2, 1.2, 1.4], gap="small")
 
 with c1:
-    st.markdown(f"""
+    st.markdown(
+        f"""
     <div class="kpi-card">
       <div class="kpi-title">方向</div>
       <div class="kpi-value {mood_class}">{mood_text}</div>
       <div class="kpi-sub">原始：{ai["direction_text"]} ｜ 主力：{ai["main_contract"]}</div>
     </div>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
 with c2:
-    st.markdown(f"""
+    st.markdown(
+        f"""
     <div class="kpi-card">
       <div class="kpi-title">方向強度（-100%~+100%）</div>
       <div class="kpi-value {mood_class}">{final_score_pct:+d}%</div>
       <div class="kpi-sub">{direction_text}</div>
     </div>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
 with c3:
-    st.markdown(f"""
+    st.markdown(
+        f"""
     <div class="kpi-card">
       <div class="kpi-title">{cons_dot} 一致性</div>
       <div class="kpi-value">{ai["consistency_pct"]}%</div>
       <div class="kpi-sub">多因子同向程度</div>
     </div>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
 with c4:
-    st.markdown(f"""
+    st.markdown(
+        f"""
     <div class="kpi-card">
       <div class="kpi-title">{risk_dot} 風險</div>
       <div class="kpi-value">{ai["risk_score"]}/100</div>
       <div class="kpi-sub">波動與不確定性</div>
     </div>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
 with c5:
-    st.markdown(f"""
+    st.markdown(
+        f"""
     <div class="kpi-card">
       <div class="kpi-title">TXF 盤後收盤</div>
       <div class="kpi-value">{ai["tx_last_price"]:.0f}</div>
       <div class="kpi-sub">日變化：{ai["tx_spread_points"]:+.0f} 點 ｜ 區間：{ai["tx_range_points"]:.0f} 點</div>
     </div>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
-# 額外資訊
-# 額外資訊
 with st.expander("📌 主力成本與量能細節", expanded=True):
     info1, info2, info3, info4, info5, info6 = st.columns(6)
     info1.caption(f"主力合約：**{ai['main_contract']}**")
@@ -537,10 +540,9 @@ with st.expander("📌 主力成本與量能細節", expanded=True):
     info5.caption(f"20D 平均收盤：**{(f'{avg20_close:.0f}' if avg20_close is not None else '—')}**")
     info6.caption(f"量能比：**{ai['vol_ratio']}x**")
 
-
 st.divider()
 
-# 表格
+# 表格（收在 expander）
 show_cols = [
     "date", "futures_id", "contract_date",
     "open", "max", "min", "close",
@@ -560,7 +562,6 @@ df_show2 = pd.concat([df_single, df_spread], ignore_index=True).drop(columns=["c
 
 with st.expander("📊 盤後原始資料表（點我展開）", expanded=False):
     st.dataframe(df_show2, width="stretch", height=240)
-
 
 if debug_mode:
     st.divider()
