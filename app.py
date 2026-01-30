@@ -5,6 +5,15 @@ import requests
 from bs4 import BeautifulSoup
 import streamlit as st
 
+st.markdown("## 🔧 Debug 狀態檢查")
+
+if "FINMIND_TOKEN" in st.secrets:
+    token = st.secrets["FINMIND_TOKEN"]
+    st.success("✅ FINMIND_TOKEN 已成功載入")
+    st.write("Token 長度：", len(token))
+else:
+    st.error("❌ FINMIND_TOKEN 未讀取到")
+
 st.set_page_config(page_title="台指期貨/選擇權 AI 儀表板", layout="wide")
 
 TAIFEX_FUT_DAILY_URL = "https://www.taifex.com.tw/cht/3/futDailyMarketReport"
