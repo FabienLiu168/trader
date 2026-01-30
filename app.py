@@ -245,8 +245,18 @@ with c3:
 with c4:
     st.markdown(f"<div class='kpi-card'><div class='kpi-title'>風險</div><div class='kpi-value'>{ai['risk_score']}/100</div></div>", unsafe_allow_html=True)
 with c5:
-    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>日震幅</div><div class='kpi-value'>{ai['day_range']}</div>
-<div class='kpi-sub'>最高 - 最低</div></div>", unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div class='kpi-card'>
+          <div class='kpi-title'>日震幅</div>
+          <div class='kpi-value'>
+            {ai["day_range"]:.0f}
+          </div>
+          <div class='kpi-sub'>High − Low</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # =========================
 # 選擇權 V3（ΔOI + 結構 + 價格）
