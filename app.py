@@ -42,18 +42,18 @@ st.markdown(
 <div class="app-subtitle">
 ✅ 資料基準：<b>Position（結算資料）</b><br/>
 ✅ 收盤價定義：<b>Settlement Price（官方結算價）</b><br/>
-❌ 不使用 after_market / regular<br/>
-❌ 不使用 API date 當交易日
+❌ 非交易日不顯示任何資料
 </div>
 """,
     unsafe_allow_html=True,
 )
 
 # =========================
-# Debug
+# 工具：交易日判斷（第一階段）
 # =========================
-params = st.query_params
-debug_mode = str(params.get("debug", "0")).lower() in ("1", "true", "yes", "y")
+def is_trading_day(d: dt.date) -> bool:
+    # 台指期：週一(0) ~ 週五(4)
+    return d.weekday() < 5
 
 # =========================
 # Token
@@ -91,23 +91,27 @@ def finmind_get(dataset, data_id, start_date, end_date):
     return pd.DataFrame(r.json().get("data", []))
 
 # =========================
-# Position 資料抓取（關鍵）
+# Position 資料抓取（以交易日為主）
 # =========================
 @st.cache_data(ttl=600, show_spinner=False)
-def fetch_position(target_date: dt.date) -> pd.DataFrame:
+def fetch_position_for_trade_date(trade_date: dt.date) -> pd.DataFrame:
+    """
+    取得「屬於 trade_date 的結算資料」
+    注意：結算資料可能於隔日公告
+    """
     df = finmind_get(
         dataset="TaiwanFuturesDaily",
         data_id="TX",
-        start_date=(target_date - dt.timedelta(days=1)).strftime("%Y-%m-%d"),
-        end_date=(target_date + dt.timedelta(days=1)).strftime("%Y-%m-%d"),
+        start_date=trade_date.strftime("%Y-%m-%d"),
+        end_date=(trade_date + dt.timedelta(days=3)).strftime("%Y-%m-%d"),
     )
     if df.empty:
         return df
 
     df = df[df["trading_session"].astype(str) == "position"].copy()
 
-    # ❗不要相信 API date，人工定義結算日
-    df["settlement_trade_date"] = target_date
+    # 人工指定：這批資料屬於查詢的交易日
+    df["trade_date"] = trade_date
 
     return df
 
@@ -115,27 +119,24 @@ def fetch_position(target_date: dt.date) -> pd.DataFrame:
 # 工具
 # =========================
 def clamp(v, lo, hi): return max(lo, min(hi, v))
-def clamp01(x, lo=-1, hi=1): return max(lo, min(hi, x))
 
 # =========================
 # Position 專用主力合約選擇
 # =========================
-def pick_main_contract_position(df: pd.DataFrame, target_date: dt.date):
+def pick_main_contract_position(df: pd.DataFrame, trade_date: dt.date):
     x = df.copy()
     x["contract_ym"] = pd.to_numeric(x["contract_date"], errors="coerce")
 
-    target_ym = target_date.year * 100 + target_date.month
+    target_ym = trade_date.year * 100 + trade_date.month
 
-    # 優先選 >= 結算月的最近一個
     cand = x[x["contract_ym"] >= target_ym]
     if not cand.empty:
         return cand.sort_values("contract_ym").iloc[0]
 
-    # 若沒有，退回最近的
     return x.sort_values("contract_ym").iloc[-1]
 
 # =========================
-# AI 分析（完全以結算價）
+# AI 分析（以結算價為準）
 # =========================
 def calc_ai_scores(main_row, df_all):
     open_ = float(main_row.get("open", 0) or 0)
@@ -162,32 +163,38 @@ def calc_ai_scores(main_row, df_all):
 
     return {
         "direction_text": direction,
-        "final_score": round(final, 2),
-        "consistency_pct": int(abs(final) / 3 * 100),
-        "risk_score": int(clamp(range_ / 3, 0, 100)),
         "tx_last_price": final_close,
         "tx_spread_points": spread,
         "tx_range_points": range_,
-        "vol_ratio": round(vol_ratio, 2),
+        "consistency_pct": int(abs(final) / 3 * 100),
+        "risk_score": int(clamp(range_ / 3, 0, 100)),
         "main_contract": str(main_row.get("contract_date", "")),
     }
 
 # =========================
 # UI
 # =========================
-target_date = st.date_input("查詢結算日（Position）", value=dt.date.today())
+trade_date = st.date_input("查詢交易日（結算）", value=dt.date.today())
 
-with st.spinner("抓取 Position 結算資料中..."):
-    df_day_all = fetch_position(target_date)
-
-if df_day_all.empty:
-    st.error(f"❌ {target_date} 尚未產生結算資料（假日或尚未結算）")
+# 🚫 非交易日直接中止
+if not is_trading_day(trade_date):
+    st.warning(
+        f"📅 {trade_date} 為非交易日（週六 / 週日）\n\n"
+        "期貨市場無交易、無結算資料，故不顯示任何數據。"
+    )
     st.stop()
 
-st.success(f"✅ 結算日：{target_date}")
-st.caption(f"合約筆數：{len(df_day_all)}")
+with st.spinner("抓取 Position 結算資料中..."):
+    df_day_all = fetch_position_for_trade_date(trade_date)
 
-main_row = pick_main_contract_position(df_day_all, target_date)
+if df_day_all.empty:
+    st.error(f"❌ {trade_date} 無結算資料（可能尚未公告或為休市日）")
+    st.stop()
+
+st.success(f"✅ 交易日：{trade_date}")
+st.caption("結算價屬於該交易日，可能於隔日公告")
+
+main_row = pick_main_contract_position(df_day_all, trade_date)
 ai = calc_ai_scores(main_row, df_day_all)
 
 mood = ai["direction_text"]
@@ -209,10 +216,10 @@ with c5:
 st.divider()
 
 # =========================
-# 原始資料表（Position 結算）
+# 原始資料表（僅該交易日）
 # =========================
 show_cols = [
-    "settlement_trade_date",
+    "trade_date",
     "trading_session",
     "futures_id",
     "contract_date",
@@ -229,8 +236,3 @@ for c in show_cols:
 
 with st.expander("📊 Position 結算原始資料表", expanded=False):
     st.dataframe(df_day_all[show_cols], height=360, width="stretch")
-
-if debug_mode:
-    st.divider()
-    st.subheader("🔎 Debug：Position 筆數")
-    st.write(len(df_day_all))
