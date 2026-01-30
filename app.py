@@ -463,7 +463,20 @@ with k1:
     st.metric("方向", ai["direction_text"])
 
 with k2:
-    st.metric("Final Score", f'{ai["final_score"]}')
+    direction_text = (
+    "強烈偏多" if final_score_pct >= 60 else
+    "偏多" if final_score_pct >= 20 else
+    "中性" if final_score_pct > -20 else
+    "偏空" if final_score_pct > -60 else
+    "強烈偏空"
+)
+
+st.metric(
+    "Final Score（方向強度）",
+    f"{final_score_pct:+d}%",
+    help=direction_text
+)
+
 
 with k3:
     # 一致性顏色提示（用 emoji）
@@ -493,6 +506,32 @@ with k4:
 
 with k5:
     st.metric("TXF 盤後收盤", f'{ai["tx_last_price"]:.0f}', delta=f'{ai["tx_spread_points"]:+.0f} 點')
+
+
+# ===== Final Directional Score (-100% ~ +100%) =====
+factor_scores = calc_directional_score(
+    close_price=main_row["close"],
+    vwap20=vwap_20_close,
+    vol_ratio=ai["vol_ratio"],
+    pcr=ai["pcr"],
+    atm_iv=ai["atm_iv"],
+    open_price=main_row.get("open"),
+)
+
+WEIGHTS = {
+    "cost": 0.35,
+    "volume": 0.20,
+    "pcr": 0.20,
+    "iv": 0.15,
+    "intraday": 0.10,
+}
+
+raw_score = sum(
+    factor_scores[k] * WEIGHTS[k]
+    for k in WEIGHTS
+)
+
+final_score_pct = int(clamp(raw_score) * 100)
 
 # 額外資訊（讓你確認主力選擇是對的）
 info1, info2, info3, info4, info5, info6 = st.columns(6)
