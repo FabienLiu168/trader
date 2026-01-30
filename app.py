@@ -169,14 +169,14 @@ def calc_ai_scores(main_row, df_all):
 
     direction = "偏多" if score > 0.8 else "偏空" if score < -0.8 else "中性"
 
-return {
-    "direction_text": direction,
-    "tx_last_price": final_close,
-    "tx_spread_points": spread,          # 原本留著（如果你其他地方用）
-    "day_range": int(day_range),          # ⭐ 新增：日振幅
-    "risk_score": int(clamp(range_ / 3, 0, 100)),
-    "consistency_pct": int(abs(score) / 3 * 100),
-}
+    return {
+        "direction_text": direction,
+        "tx_last_price": final_close,
+        "tx_spread_points": spread,          # 原本留著（如果你其他地方用）
+        "day_range": int(day_range),          # ⭐ 新增：日振幅
+        "risk_score": int(clamp(range_ / 3, 0, 100)),
+        "consistency_pct": int(abs(score) / 3 * 100),
+    }
 
 # =========================
 # 期貨資料實際執行
