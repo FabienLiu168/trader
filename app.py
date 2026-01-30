@@ -26,11 +26,11 @@ div[data-testid="stAppViewContainer"] > .main { padding-top: 3.2rem; }
 .fut-section-title{
   font-size:2.0rem !important;   /* ⭐ 關鍵在這 */
   font-weight:600 !important;
-  margin-top:1.2rem !important;
-  margin-bottom:1.0rem !important;
+  margin-top:0.5rem !important;
+  margin-bottom:0.5rem !important;
   display:flex;
   align-items:center;
-  gap:10px;
+  gap:5px;
 }
 
 .kpi-card{
@@ -57,11 +57,11 @@ div[data-testid="stAppViewContainer"] > .main { padding-top: 3.2rem; }
 .opt-section-title{
   font-size:2.0rem !important;   /* ⭐ 想跟期貨一樣就同數值 */
   font-weight:600 !important;
-  margin-top:1.2rem !important;
-  margin-bottom:1.0rem !important;
+  margin-top:0.5rem !important;
+  margin-bottom:0.5rem !important;
   display:flex;
   align-items:center;
-  gap:10px;
+  gap:5px;
 }
 
 </style>
