@@ -241,6 +241,8 @@ with st.expander("📊 Position 結算原始資料表", expanded=False):
 # （以下為「新增」：選擇權模組，不影響既有期貨）
 # =========================
 
+import plotly.graph_objects as go
+
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_option_for_trade_date(trade_date: dt.date) -> pd.DataFrame:
     df = finmind_get(
@@ -254,13 +256,12 @@ def fetch_option_for_trade_date(trade_date: dt.date) -> pd.DataFrame:
 
 def calc_option_market_bias(df_opt: pd.DataFrame, settlement_price: float):
     """
-    選擇權市場偏向分析（防呆版）
-    回傳 dict 或 None
+    專業版選擇權「區間定位」模型
+    不再使用 OI Center，避免系統性偏多
     """
     if df_opt is None or df_opt.empty:
         return None
 
-    # 嘗試辨識 Call / Put 欄位
     cp_col = None
     for c in ["option_type", "call_put", "right"]:
         if c in df_opt.columns:
@@ -272,101 +273,123 @@ def calc_option_market_bias(df_opt: pd.DataFrame, settlement_price: float):
     if "strike_price" not in df_opt.columns or "open_interest" not in df_opt.columns:
         return None
 
-    def norm_cp(v):
-        if pd.isna(v):
-            return None
-        s = str(v).lower()
-        if s in ("c", "call"):
-            return "call"
-        if s in ("p", "put"):
-            return "put"
-        return None
-
     x = df_opt.copy()
-    x["cp"] = x[cp_col].apply(norm_cp)
+    x["cp"] = x[cp_col].astype(str).str.lower().map(
+        {"c": "call", "call": "call", "p": "put", "put": "put"}
+    )
     x["strike"] = pd.to_numeric(x["strike_price"], errors="coerce")
     x["oi"] = pd.to_numeric(x["open_interest"], errors="coerce")
+    x = x.dropna(subset=["cp", "strike", "oi"])
 
-    call = x[x["cp"] == "call"].dropna(subset=["strike", "oi"])
-    put  = x[x["cp"] == "put"].dropna(subset=["strike", "oi"])
-
+    call = x[x["cp"] == "call"]
+    put = x[x["cp"] == "put"]
     if call.empty or put.empty:
         return None
 
-    total_oi = call["oi"].sum() + put["oi"].sum()
-    if total_oi <= 0:
+    # 找「最接近現價」的最大 OI 支撐 / 壓力
+    call_near = call.iloc[(call["strike"] - settlement_price).abs().argsort()].iloc[0]
+    put_near = put.iloc[(put["strike"] - settlement_price).abs().argsort()].iloc[0]
+
+    call_res = call_near["strike"]
+    put_sup = put_near["strike"]
+
+    if call_res <= put_sup:
         return None
 
-    # 市場共識價
-    oi_center = (
-        (call["strike"] * call["oi"]).sum() +
-        (put["strike"] * put["oi"]).sum()
-    ) / total_oi
+    mid = (call_res + put_sup) / 2
+    width = call_res - put_sup
+    bias_ratio = (settlement_price - mid) / width
 
-    # 壓力 / 支撐
-    call_pressure = call.loc[call["oi"].idxmax()]["strike"]
-    put_support = put.loc[put["oi"].idxmax()]["strike"]
-
-    # 偏向判斷
-    if settlement_price > oi_center + 30:
-        bias = "偏多"
+    if bias_ratio > 0.25:
+        bias = "區間偏多"
         cls = "bull"
-    elif settlement_price < oi_center - 30:
-        bias = "偏空"
+    elif bias_ratio < -0.25:
+        bias = "區間偏空"
         cls = "bear"
     else:
-        bias = "中性"
+        bias = "區間震盪"
         cls = "neut"
 
     return {
         "bias": bias,
         "cls": cls,
-        "oi_center": oi_center,
-        "call_pressure": call_pressure,
-        "put_support": put_support,
+        "call_res": call_res,
+        "put_sup": put_sup,
+        "mid": mid,
+        "df": x,
     }
+
+
+def plot_option_range(opt_res, price):
+    df = opt_res["df"]
+    fig = go.Figure()
+
+    fig.add_bar(
+        x=df[df["cp"] == "call"]["strike"],
+        y=df[df["cp"] == "call"]["oi"],
+        name="Call OI（壓力）",
+        marker_color="rgba(255,59,48,0.6)",
+    )
+
+    fig.add_bar(
+        x=df[df["cp"] == "put"]["strike"],
+        y=-df[df["cp"] == "put"]["oi"],
+        name="Put OI（支撐）",
+        marker_color="rgba(52,199,89,0.6)",
+    )
+
+    for label, x in [
+        ("現價", price),
+        ("壓力", opt_res["call_res"]),
+        ("支撐", opt_res["put_sup"]),
+        ("中軸", opt_res["mid"]),
+    ]:
+        fig.add_vline(x=x, line_dash="dash", annotation_text=label)
+
+    fig.update_layout(
+        title="選擇權 OI 壓力 / 支撐區間圖",
+        barmode="overlay",
+        height=420,
+        showlegend=True,
+    )
+
+    return fig
 
 
 # =========================
 # UI：選擇權市場分析（新增）
 # =========================
 st.divider()
-st.subheader("🧩 選擇權市場結構分析（不影響期貨）")
+st.subheader("🧩 選擇權市場區間分析（不影響期貨）")
 
 with st.spinner("分析選擇權市場中..."):
     df_opt = fetch_option_for_trade_date(trade_date)
     opt = calc_option_market_bias(df_opt, ai["tx_last_price"])
 
 if opt is None:
-    st.info("ℹ️ 本交易日選擇權資料不足，暫不顯示市場偏向")
+    st.info("ℹ️ 本交易日選擇權資料不足，暫不顯示市場結構")
 else:
-    c1, c2, c3, c4 = st.columns([1.4, 1.4, 1.6, 1.6], gap="small")
+    c1, c2, c3 = st.columns([1.4, 1.8, 1.8], gap="small")
 
     with c1:
         st.markdown(
-            f"<div class='kpi-card'><div class='kpi-title'>選擇權市場偏向</div>"
+            f"<div class='kpi-card'><div class='kpi-title'>選擇權市場狀態</div>"
             f"<div class='kpi-value {opt['cls']}'>{opt['bias']}</div></div>",
             unsafe_allow_html=True,
         )
 
     with c2:
         st.markdown(
-            f"<div class='kpi-card'><div class='kpi-title'>OI 共識價</div>"
-            f"<div class='kpi-value'>{opt['oi_center']:.0f}</div></div>",
+            f"<div class='kpi-card'><div class='kpi-title'>上方壓力（Call OI）</div>"
+            f"<div class='kpi-value'>{opt['call_res']:.0f}</div></div>",
             unsafe_allow_html=True,
         )
 
     with c3:
         st.markdown(
-            f"<div class='kpi-card'><div class='kpi-title'>上方壓力（Call OI 最大）</div>"
-            f"<div class='kpi-value'>{opt['call_pressure']:.0f}</div></div>",
+            f"<div class='kpi-card'><div class='kpi-title'>下方支撐（Put OI）</div>"
+            f"<div class='kpi-value'>{opt['put_sup']:.0f}</div></div>",
             unsafe_allow_html=True,
         )
 
-    with c4:
-        st.markdown(
-            f"<div class='kpi-card'><div class='kpi-title'>下方支撐（Put OI 最大）</div>"
-            f"<div class='kpi-value'>{opt['put_support']:.0f}</div></div>",
-            unsafe_allow_html=True,
-        )
-
+    st.plotly_chart(plot_option_range(opt, ai["tx_last_price"]), use_container_width=True)
