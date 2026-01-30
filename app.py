@@ -10,24 +10,24 @@ import streamlit as st
 # =========================
 # 基本設定
 # =========================
-st.set_page_config(page_title="台指期貨 / 選擇權 AI 儀表板", layout="wide")
+st.set_page_config(page_title="台指期貨專業交易決策面板", layout="wide")
 
-APP_TITLE = "台指期貨 / 選擇權 AI 儀表板（Position 結算最終版）"
+APP_TITLE = "台指期貨｜專業交易決策面板（結算 × 夜盤 × 選擇權）"
 
 st.markdown(
     """
 <style>
 div[data-testid="stAppViewContainer"] > .main { padding-top: 3.8rem; }
-.app-title{ font-size:2.15rem;font-weight:900;margin:0 }
-.app-subtitle{ font-size:.95rem;opacity:.75;margin:.3rem 0 .9rem }
-.kpi-card{
+.app-title{ font-size:2.2rem;font-weight:900;margin:0 }
+.app-subtitle{ font-size:.95rem;opacity:.75;margin:.4rem 0 1rem }
+.card{
   border:1px solid rgba(255,255,255,.12);
   border-radius:14px;padding:14px 16px;
   background:rgba(255,255,255,.04);
   box-shadow:0 6px 22px rgba(0,0,0,.18)
 }
-.kpi-title{ font-size:.95rem;opacity:.85 }
-.kpi-value{ font-size:2rem;font-weight:800 }
+.card-title{ font-size:.95rem;opacity:.85 }
+.card-value{ font-size:2rem;font-weight:800 }
 .bull{color:#FF3B30}
 .bear{color:#34C759}
 .neut{color:#C7C7CC}
@@ -40,20 +40,22 @@ st.markdown(
     f"""
 <div class="app-title">{APP_TITLE}</div>
 <div class="app-subtitle">
-✅ 資料基準：<b>Position（結算資料）</b><br/>
-✅ 收盤價定義：<b>Settlement Price（官方結算價）</b><br/>
-❌ 非交易日不顯示任何資料
+• 價格錨點：<b>Position 結算價</b><br/>
+• 夜盤僅作偏移加權，不影響結算<br/>
+• 選擇權以 OI 結構判斷市場預期
 </div>
 """,
     unsafe_allow_html=True,
 )
 
 # =========================
-# 工具：交易日判斷（第一階段）
+# 工具
 # =========================
 def is_trading_day(d: dt.date) -> bool:
-    # 台指期：週一(0) ~ 週五(4)
     return d.weekday() < 5
+
+def clamp(v, lo, hi):
+    return max(lo, min(hi, v))
 
 # =========================
 # Token
@@ -66,9 +68,6 @@ def get_finmind_token():
 
 FINMIND_TOKEN = get_finmind_token()
 
-# =========================
-# FinMind API
-# =========================
 FINMIND_API = "https://api.finmindtrade.com/api/v4/data"
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -91,148 +90,131 @@ def finmind_get(dataset, data_id, start_date, end_date):
     return pd.DataFrame(r.json().get("data", []))
 
 # =========================
-# Position 資料抓取（以交易日為主）
+# ① Position 結算資料
 # =========================
 @st.cache_data(ttl=600, show_spinner=False)
-def fetch_position_for_trade_date(trade_date: dt.date) -> pd.DataFrame:
-    """
-    取得「屬於 trade_date 的結算資料」
-    注意：結算資料可能於隔日公告
-    """
+def fetch_position(trade_date: dt.date) -> pd.DataFrame:
     df = finmind_get(
-        dataset="TaiwanFuturesDaily",
-        data_id="TX",
-        start_date=trade_date.strftime("%Y-%m-%d"),
-        end_date=(trade_date + dt.timedelta(days=3)).strftime("%Y-%m-%d"),
+        "TaiwanFuturesDaily",
+        "TX",
+        trade_date.strftime("%Y-%m-%d"),
+        (trade_date + dt.timedelta(days=3)).strftime("%Y-%m-%d"),
     )
     if df.empty:
         return df
-
     df = df[df["trading_session"].astype(str) == "position"].copy()
-
-    # 人工指定：這批資料屬於查詢的交易日
     df["trade_date"] = trade_date
-
     return df
 
-# =========================
-# 工具
-# =========================
-def clamp(v, lo, hi): return max(lo, min(hi, v))
-
-# =========================
-# Position 專用主力合約選擇
-# =========================
-def pick_main_contract_position(df: pd.DataFrame, trade_date: dt.date):
-    x = df.copy()
-    x["contract_ym"] = pd.to_numeric(x["contract_date"], errors="coerce")
-
+def pick_main_contract(df: pd.DataFrame, trade_date: dt.date):
+    df["ym"] = pd.to_numeric(df["contract_date"], errors="coerce")
     target_ym = trade_date.year * 100 + trade_date.month
-
-    cand = x[x["contract_ym"] >= target_ym]
-    if not cand.empty:
-        return cand.sort_values("contract_ym").iloc[0]
-
-    return x.sort_values("contract_ym").iloc[-1]
+    cand = df[df["ym"] >= target_ym]
+    return cand.sort_values("ym").iloc[0] if not cand.empty else df.sort_values("ym").iloc[-1]
 
 # =========================
-# AI 分析（以結算價為準）
+# ② 夜盤偏移模組
 # =========================
-def calc_ai_scores(main_row, df_all):
-    open_ = float(main_row.get("open", 0) or 0)
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_night(trade_date: dt.date):
+    df = finmind_get(
+        "TaiwanFuturesDaily",
+        "TX",
+        trade_date.strftime("%Y-%m-%d"),
+        (trade_date + dt.timedelta(days=1)).strftime("%Y-%m-%d"),
+    )
+    return df[df["trading_session"].astype(str) == "after_market"].copy()
 
-    settle_price = main_row.get("settlement_price")
-    close_price = main_row.get("close")
-    final_close = float(settle_price) if settle_price not in (None, "", 0) else float(close_price or 0)
+def calc_night_bias(night_df: pd.DataFrame, settlement_price: float):
+    if night_df.empty:
+        return {"score": 0.0, "text": "無夜盤資料"}
+    close = float(night_df.iloc[-1]["close"])
+    bias = close - settlement_price
+    score = clamp(bias / 100.0, -1.0, 1.0)
+    return {"score": score, "text": f"{bias:+.0f} 點"}
 
-    high_ = float(main_row.get("max", 0) or 0)
-    low_ = float(main_row.get("min", 0) or 0)
+# =========================
+# ③ 選擇權 OI 模組
+# =========================
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_options(trade_date: dt.date):
+    return finmind_get(
+        "TaiwanOptionDaily",
+        "TXO",
+        trade_date.strftime("%Y-%m-%d"),
+        trade_date.strftime("%Y-%m-%d"),
+    )
 
-    spread = final_close - open_
-    range_ = max(0.0, high_ - low_)
+def calc_option_bias(df: pd.DataFrame, price: float):
+    if df.empty:
+        return None
+    df["strike"] = pd.to_numeric(df["strike_price"], errors="coerce")
+    df["oi"] = pd.to_numeric(df["open_interest"], errors="coerce")
 
-    vol = float(pd.to_numeric(main_row.get("volume", 0), errors="coerce") or 0)
-    vol_med = max(float(pd.to_numeric(df_all["volume"], errors="coerce").median() or 1), 1)
-    vol_ratio = vol / vol_med
+    call = df[df["option_type"] == "call"]
+    put = df[df["option_type"] == "put"]
 
-    momentum = clamp(spread / 100.0, -3, 3)
-    vol_score = clamp((vol_ratio - 1) * 2, -2, 2)
+    oi_center = (
+        (call["strike"] * call["oi"]).sum() +
+        (put["strike"] * put["oi"]).sum()
+    ) / (call["oi"].sum() + put["oi"].sum())
 
-    final = momentum * 0.7 + vol_score * 0.3
-    direction = "偏多" if final > 1 else "偏空" if final < -1 else "中性"
+    call_p = call.loc[call["oi"].idxmax()]["strike"]
+    put_s = put.loc[put["oi"].idxmax()]["strike"]
+
+    score = 0.6 if price > oi_center else -0.6
 
     return {
-        "direction_text": direction,
-        "tx_last_price": final_close,
-        "tx_spread_points": spread,
-        "tx_range_points": range_,
-        "consistency_pct": int(abs(final) / 3 * 100),
-        "risk_score": int(clamp(range_ / 3, 0, 100)),
-        "main_contract": str(main_row.get("contract_date", "")),
+        "oi_center": oi_center,
+        "call_pressure": call_p,
+        "put_support": put_s,
+        "score": score,
     }
 
 # =========================
 # UI
 # =========================
-trade_date = st.date_input("查詢交易日（結算）", value=dt.date.today())
+trade_date = st.date_input("查詢交易日", value=dt.date.today())
 
-# 🚫 非交易日直接中止
 if not is_trading_day(trade_date):
-    st.warning(
-        f"📅 {trade_date} 為非交易日（週六 / 週日）\n\n"
-        "期貨市場無交易、無結算資料，故不顯示任何數據。"
-    )
+    st.warning("📅 非交易日（週六 / 週日），不顯示任何資料")
     st.stop()
 
-with st.spinner("抓取 Position 結算資料中..."):
-    df_day_all = fetch_position_for_trade_date(trade_date)
-
-if df_day_all.empty:
-    st.error(f"❌ {trade_date} 無結算資料（可能尚未公告或為休市日）")
+df_pos = fetch_position(trade_date)
+if df_pos.empty:
+    st.error("❌ 查無結算資料")
     st.stop()
 
-st.success(f"✅ 交易日：{trade_date}")
-st.caption("結算價屬於該交易日，可能於隔日公告")
+main = pick_main_contract(df_pos, trade_date)
+settlement_price = float(main["settlement_price"])
+direction = "偏多" if settlement_price > main["open"] else "偏空"
 
-main_row = pick_main_contract_position(df_day_all, trade_date)
-ai = calc_ai_scores(main_row, df_day_all)
+night = calc_night_bias(fetch_night(trade_date), settlement_price)
+opt = calc_option_bias(fetch_options(trade_date), settlement_price)
 
-mood = ai["direction_text"]
-cls = "bull" if mood == "偏多" else "bear" if mood == "偏空" else "neut"
+final_score = (
+    0.55 * (1 if direction == "偏多" else -1) +
+    0.20 * night["score"] +
+    0.25 * (opt["score"] if opt else 0)
+)
 
-c1, c2, c3, c4, c5 = st.columns([1.6,1.6,1.2,1.2,1.4], gap="small")
+final_view = "偏多" if final_score > 0.5 else "偏空" if final_score < -0.5 else "震盪"
+cls = "bull" if final_view == "偏多" else "bear" if final_view == "偏空" else "neut"
+
+st.subheader("📊 交易決策總覽")
+
+c1, c2, c3, c4 = st.columns(4)
 
 with c1:
-    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>方向</div><div class='kpi-value {cls}'>{mood}</div></div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='card'><div class='card-title'>結算價</div><div class='card-value'>{settlement_price:.0f}</div></div>", unsafe_allow_html=True)
 with c2:
-    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>收盤價（結算價）</div><div class='kpi-value'>{ai['tx_last_price']:.0f}</div></div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='card'><div class='card-title'>夜盤偏移</div><div class='card-value'>{night['text']}</div></div>", unsafe_allow_html=True)
 with c3:
-    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>一致性</div><div class='kpi-value'>{ai['consistency_pct']}%</div></div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='card'><div class='card-title'>OI 重心</div><div class='card-value'>{opt['oi_center']:.0f}</div></div>", unsafe_allow_html=True)
 with c4:
-    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>風險</div><div class='kpi-value'>{ai['risk_score']}/100</div></div>", unsafe_allow_html=True)
-with c5:
-    st.markdown(f"<div class='kpi-card'><div class='kpi-title'>日變化</div><div class='kpi-value {cls}'>{ai['tx_spread_points']:+.0f}</div></div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='card'><div class='card-title'>最終判斷</div><div class='card-value {cls}'>{final_view}</div></div>", unsafe_allow_html=True)
 
 st.divider()
 
-# =========================
-# 原始資料表（僅該交易日）
-# =========================
-show_cols = [
-    "trade_date",
-    "trading_session",
-    "futures_id",
-    "contract_date",
-    "open",
-    "close",
-    "settlement_price",
-    "volume",
-    "open_interest",
-]
-
-for c in show_cols:
-    if c not in df_day_all.columns:
-        df_day_all[c] = None
-
-with st.expander("📊 Position 結算原始資料表", expanded=False):
-    st.dataframe(df_day_all[show_cols], height=360, width="stretch")
+with st.expander("📊 Position 結算原始資料"):
+    st.dataframe(df_pos, height=360)
