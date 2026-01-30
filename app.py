@@ -19,7 +19,7 @@ st.markdown(
 <style>
 div[data-testid="stAppViewContainer"] > .main { padding-top: 3.2rem; }
 
-.app-title{ font-size:2.7rem;font-weight:900;margin-top:-80px;text-align:center;letter-spacing:0.5px;margin-bottom:2px; }
+.app-title{ font-size:2.7rem;font-weight:900;margin-top:-50px;text-align:center;letter-spacing:0.5px;margin-bottom:2px; }
 .app-subtitle{ font-size:1.25rem;opacity:.8;margin:.45rem 0 1.1rem;text-align:center; }
 
 .kpi-card{
