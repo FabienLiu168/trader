@@ -49,7 +49,7 @@ st.markdown(
 )
 
 # =========================
-# 工具：交易日判斷
+# 工具
 # =========================
 def is_trading_day(d: dt.date) -> bool:
     return d.weekday() < 5
@@ -93,7 +93,7 @@ def finmind_get(dataset, data_id, start_date, end_date):
     return pd.DataFrame(r.json().get("data", []))
 
 # =========================
-# Position 資料抓取（期貨，完全不動）
+# Position 期貨（完全不動）
 # =========================
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_position_for_trade_date(trade_date: dt.date) -> pd.DataFrame:
@@ -116,9 +116,6 @@ def pick_main_contract_position(df: pd.DataFrame, trade_date: dt.date):
     cand = x[x["contract_ym"] >= target_ym]
     return cand.sort_values("contract_ym").iloc[0] if not cand.empty else x.sort_values("contract_ym").iloc[-1]
 
-# =========================
-# 期貨 AI（完全不動）
-# =========================
 def calc_ai_scores(main_row, df_all):
     open_ = float(main_row.get("open", 0) or 0)
     settle_price = main_row.get("settlement_price")
@@ -146,7 +143,7 @@ def calc_ai_scores(main_row, df_all):
     }
 
 # =========================
-# UI：期貨（完全不動）
+# UI：期貨
 # =========================
 trade_date = st.date_input("查詢交易日（結算）", value=dt.date.today())
 
@@ -171,14 +168,13 @@ with c3: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>一致性</d
 with c4: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>風險</div><div class='kpi-value'>{ai['risk_score']}/100</div></div>",unsafe_allow_html=True)
 with c5: st.markdown(f"<div class='kpi-card'><div class='kpi-title'>日變化</div><div class='kpi-value {cls}'>{ai['tx_spread_points']:+.0f}</div></div>",unsafe_allow_html=True)
 
+# =========================
+# 選擇權模組（無任何外部套件）
+# =========================
 st.divider()
+st.subheader("🧩 選擇權 OI 壓力 / 支撐分析")
 
-# =========================
-# 選擇權模組（新增，使用 matplotlib）
-# =========================
-import matplotlib.pyplot as plt
-
-@st.cache_data(ttl=600, show_spinner=False)
+@st.cache_data(ttl=600)
 def fetch_option_for_trade_date(trade_date: dt.date) -> pd.DataFrame:
     return finmind_get(
         dataset="TaiwanOptionDaily",
@@ -187,69 +183,36 @@ def fetch_option_for_trade_date(trade_date: dt.date) -> pd.DataFrame:
         end_date=trade_date.strftime("%Y-%m-%d"),
     )
 
-def calc_option_market_bias(df_opt: pd.DataFrame, price: float):
-    if df_opt is None or df_opt.empty:
-        return None
-
-    cp_col = next((c for c in ["option_type","call_put","right"] if c in df_opt.columns), None)
-    if cp_col is None:
-        return None
-
-    x = df_opt.copy()
-    x["cp"] = x[cp_col].astype(str).str.lower().map(
-        {"c":"call","call":"call","p":"put","put":"put"}
-    )
-    x["strike"] = pd.to_numeric(x["strike_price"], errors="coerce")
-    x["oi"] = pd.to_numeric(x["open_interest"], errors="coerce")
-    x = x.dropna(subset=["cp","strike","oi"])
-
-    call = x[x["cp"]=="call"]
-    put  = x[x["cp"]=="put"]
-    if call.empty or put.empty:
-        return None
-
-    call_near = call.iloc[(call["strike"]-price).abs().argsort()].iloc[0]
-    put_near  = put.iloc[(put["strike"]-price).abs().argsort()].iloc[0]
-
-    call_res = call_near["strike"]
-    put_sup  = put_near["strike"]
-    mid = (call_res + put_sup)/2
-    width = max(call_res - put_sup,1)
-    bias_ratio = (price - mid)/width
-
-    if bias_ratio > 0.25:
-        bias,cls="區間偏多","bull"
-    elif bias_ratio < -0.25:
-        bias,cls="區間偏空","bear"
-    else:
-        bias,cls="區間震盪","neut"
-
-    return dict(bias=bias,cls=cls,call_res=call_res,put_sup=put_sup,mid=mid,df=x)
-
-def plot_option_range(opt, price):
-    df=opt["df"]
-    fig,ax=plt.subplots(figsize=(10,4))
-    ax.bar(df[df.cp=="call"]["strike"],df[df.cp=="call"]["oi"],color="red",alpha=.6,label="Call OI")
-    ax.bar(df[df.cp=="put"]["strike"],-df[df.cp=="put"]["oi"],color="green",alpha=.6,label="Put OI")
-    for label,x in [("現價",price),("壓力",opt["call_res"]),("支撐",opt["put_sup"]),("中軸",opt["mid"])]:
-        ax.axvline(x,linestyle="--")
-        ax.text(x,ax.get_ylim()[1]*0.9,label,rotation=90)
-    ax.set_title("選擇權 OI 壓力 / 支撐區間圖")
-    ax.legend()
-    ax.grid(alpha=.3)
-    return fig
-
-st.subheader("🧩 選擇權市場區間分析")
-
 df_opt = fetch_option_for_trade_date(trade_date)
-opt = calc_option_market_bias(df_opt, ai["tx_last_price"])
 
-if opt:
-    st.markdown(
-        f"<div class='kpi-card'><div class='kpi-title'>選擇權市場狀態</div>"
-        f"<div class='kpi-value {opt['cls']}'>{opt['bias']}</div></div>",
-        unsafe_allow_html=True,
-    )
-    st.pyplot(plot_option_range(opt, ai["tx_last_price"]))
+if df_opt.empty:
+    st.info("ℹ️ 無選擇權資料")
 else:
-    st.info("ℹ️ 選擇權資料不足，無法分析")
+    df_opt["cp"] = df_opt.get("option_type", "").astype(str).str.lower()
+    df_opt["strike"] = pd.to_numeric(df_opt["strike_price"], errors="coerce")
+    df_opt["oi"] = pd.to_numeric(df_opt["open_interest"], errors="coerce")
+    df_opt = df_opt.dropna(subset=["strike","oi"])
+
+    call = df_opt[df_opt["cp"].str.contains("c")]
+    put  = df_opt[df_opt["cp"].str.contains("p")]
+
+    if call.empty or put.empty:
+        st.info("ℹ️ 選擇權資料不足")
+    else:
+        call_max = call.loc[call["oi"].idxmax()]
+        put_max  = put.loc[put["oi"].idxmax()]
+
+        st.bar_chart(
+            pd.DataFrame({
+                "Call OI": call.groupby("strike")["oi"].sum(),
+                "Put OI": -put.groupby("strike")["oi"].sum()
+            })
+        )
+
+        st.markdown(
+            f"""
+**📌 壓力位（Call OI 最大）**：{call_max['strike']:.0f}  
+**📌 支撐位（Put OI 最大）**：{put_max['strike']:.0f}  
+**📌 現價（結算）**：{ai['tx_last_price']:.0f}
+"""
+        )
