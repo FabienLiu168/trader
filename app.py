@@ -16,52 +16,21 @@ st.set_page_config(page_title="台指期貨 / 選擇權 AI 儀表板", layout="w
 
 APP_TITLE = "台指期貨 / 選擇權 AI 儀表板（第二階段：真實盤後資料接入）"
 
-# ✅ CSS：一次性修正標題被截掉（根因：header 覆蓋內容 + 曾把 header height 設 0）
 st.markdown(
     """
 <style>
-/* =========================
-   ✅ 關鍵：為 Streamlit 固定 Header 預留空間
-   ========================= */
-/*
-Streamlit 頂部有固定 header/toolbar。
-如果不預留高度，第一個元素（標題）會被覆蓋而「上緣被截掉」。
-*/
-div[data-testid="stAppViewContainer"] > .main {
-  padding-top: 3.8rem;   /* ✅ 預留給 header 的空間，這個值通常最穩 */
-}
+/* ✅ 預留 header 空間，避免標題被截掉 */
+div[data-testid="stAppViewContainer"] > .main { padding-top: 3.8rem; }
+.block-container { padding-top: 0.8rem; padding-bottom: 0.8rem; }
+header[data-testid="stHeader"] { background: transparent; }
 
-/* 主內容內部留白（可以略小，避免浪費空間） */
-.block-container {
-  padding-top: 0.8rem;
-  padding-bottom: 0.8rem;
-}
-
-/* header 保留存在但不遮擋視覺（不要 height:0） */
-header[data-testid="stHeader"] {
-  background: transparent;
-}
-
-/* =========================
-   標題（可換行、不截字）
-   ========================= */
 .app-title{
-  font-size: 2.15rem;
-  font-weight: 900;
-  line-height: 1.20;
-  margin: 0;                 /* 避免 margin 與容器裁切互相影響 */
-  padding-top: 0.35rem;      /* ✅ 再保險：避免字體 ascent 被裁掉 */
-  letter-spacing: 0.2px;
-  word-break: break-word;
-  overflow-wrap: anywhere;
+  font-size: 2.15rem; font-weight: 900; line-height: 1.20;
+  margin: 0; padding-top: 0.35rem;
+  word-break: break-word; overflow-wrap: anywhere;
 }
-.app-subtitle{
-  font-size: 0.95rem;
-  opacity: 0.75;
-  margin: 0.25rem 0 0.8rem 0;
-}
+.app-subtitle{ font-size: 0.95rem; opacity: 0.75; margin: 0.25rem 0 0.8rem 0; }
 
-/* KPI 卡片 */
 .kpi-card{
   border: 1px solid rgba(255,255,255,0.12);
   border-radius: 14px;
@@ -69,39 +38,27 @@ header[data-testid="stHeader"] {
   background: rgba(255,255,255,0.04);
   box-shadow: 0 6px 22px rgba(0,0,0,0.18);
 }
-.kpi-title{
-  font-size: 0.95rem;
-  opacity: 0.85;
-  margin-bottom: 6px;
-}
-.kpi-value{
-  font-size: 2.0rem;
-  font-weight: 800;
-  line-height: 1.1;
-}
-.kpi-sub{
-  font-size: 0.9rem;
-  opacity: 0.75;
-  margin-top: 6px;
-}
+.kpi-title{ font-size: 0.95rem; opacity: 0.85; margin-bottom: 6px; }
+.kpi-value{ font-size: 2.0rem; font-weight: 800; line-height: 1.1; }
+.kpi-sub{ font-size: 0.9rem; opacity: 0.75; margin-top: 6px; }
 
-/* 多空顏色：偏多紅、偏空綠 */
-.bull { color: #FF3B30; } /* 大紅 */
-.bear { color: #34C759; } /* 大綠 */
-.neut { color: #C7C7CC; } /* 灰 */
+.bull { color: #FF3B30; } /* 偏多紅 */
+.bear { color: #34C759; } /* 偏空綠 */
+.neut { color: #C7C7CC; } /* 中性灰 */
 
-/* dataframe 圓角 */
 [data-testid="stDataFrame"] { border-radius: 12px; overflow: hidden; }
 </style>
 """,
     unsafe_allow_html=True,
 )
 
-# ✅ 用自訂 HTML 標題（更可控，且不會被 Streamlit H1 的預設樣式影響）
 st.markdown(
     f"""
 <div class="app-title">{APP_TITLE}</div>
-<div class="app-subtitle">提示：盤後資料通常在收盤後更新；若當天尚未更新，本程式會自動回溯到最近有資料的交易日。</div>
+<div class="app-subtitle">
+提示：盤後資料常包含日盤(regular)與夜盤(after_market)。本程式以「日盤 regular」作為交易日基準，
+避免週末顯示交易日與相鄰日資料雷同問題。
+</div>
 """,
     unsafe_allow_html=True,
 )
@@ -109,10 +66,6 @@ st.markdown(
 # Debug 開關：可用網址加參數 ?debug=1
 params = st.query_params
 debug_mode = str(params.get("debug", "0")).lower() in ("1", "true", "yes", "y")
-
-# 保底預設
-final_score_pct = 0
-direction_text = "中性"
 
 
 # =========================
@@ -150,7 +103,7 @@ else:
 
 
 # =========================
-# FinMind API (盤後：TaiwanFuturesDaily)
+# FinMind API
 # =========================
 FINMIND_API = "https://api.finmindtrade.com/api/v4/data"
 
@@ -198,10 +151,58 @@ def is_trading_data_ok(df: pd.DataFrame) -> bool:
     return need_cols.issubset(set(df.columns))
 
 
-def backtrack_find_valid_date(target_date: dt.date, max_back_days: int = 14) -> tuple[dt.date | None, pd.DataFrame]:
+# =========================
+# ✅ 交易日正規化（核心修正）
+# =========================
+def normalize_trade_date(d: dt.date) -> dt.date:
+    """
+    將「自然日」轉為「交易日顯示」：
+    若落在週六/週日，回推到週五，避免 UI 出現週末交易日。
+    """
+    wd = d.weekday()  # Mon=0 ... Sun=6
+    if wd == 5:       # Sat
+        return d - dt.timedelta(days=1)
+    if wd == 6:       # Sun
+        return d - dt.timedelta(days=2)
+    return d
+
+
+def pick_session_rows(df: pd.DataFrame, prefer=("regular", "after_market")) -> tuple[pd.DataFrame, str]:
+    """
+    ✅ 統一 session 選擇策略：
+    - 優先 regular（日盤）
+    - 無 regular 才 fallback after_market（夜盤）
+    """
+    if df is None or df.empty:
+        return df, "none"
+
+    if "trading_session" not in df.columns:
+        return df.copy(), "no_session_col"
+
+    x = df.copy()
+    x["trading_session"] = x["trading_session"].astype(str)
+
+    for s in prefer:
+        xs = x[x["trading_session"] == s].copy()
+        if not xs.empty:
+            return xs, s
+
+    return x.copy(), "all"
+
+
+def backtrack_find_valid_date(target_date: dt.date, max_back_days: int = 14) -> tuple[dt.date | None, pd.DataFrame, str]:
+    """
+    ✅ 回溯找最近有效「交易日」資料：
+    1) 先把 target_date 正規化（週末回推）
+    2) 每一天抓回來後：優先拿 regular session 的 rows
+    3) 回傳：顯示交易日、該日的 df（已按 session 過濾）、使用的 session
+    """
+    base = normalize_trade_date(target_date)
+
     for i in range(max_back_days + 1):
-        d = target_date - dt.timedelta(days=i)
+        d = base - dt.timedelta(days=i)
         s = to_ymd(d)
+
         df = finmind_get(
             dataset="TaiwanFuturesDaily",
             data_id="TX",
@@ -209,20 +210,31 @@ def backtrack_find_valid_date(target_date: dt.date, max_back_days: int = 14) -> 
             end_date=s,
             token=FINMIND_TOKEN,
         )
-        if is_trading_data_ok(df):
-            df = df[df["futures_id"].astype(str) == "TX"].copy()
-            return d, df
-    return None, pd.DataFrame()
+        if not is_trading_data_ok(df):
+            continue
+
+        df = df[df["futures_id"].astype(str) == "TX"].copy()
+
+        # ✅ 先依 session 取 regular（避免夜盤跨日造成週末&重複）
+        df_sess, sess_used = pick_session_rows(df, prefer=("regular", "after_market"))
+
+        # 有些日期可能只有夜盤（跨日），這種情況也回推顯示交易日
+        display_day = normalize_trade_date(d)
+
+        if not df_sess.empty:
+            return display_day, df_sess, sess_used
+
+    return None, pd.DataFrame(), "none"
 
 
+# =========================
+# 主力合約 + AI 分數
+# =========================
 def pick_main_contract(df: pd.DataFrame) -> pd.Series | None:
-    if df.empty:
+    if df is None or df.empty:
         return None
 
     x = df.copy()
-    if "trading_session" in x.columns:
-        x = x[x["trading_session"].astype(str) == "after_market"]
-
     x["contract_date_str"] = x["contract_date"].astype(str)
     x = x[x["contract_date_str"].str.fullmatch(r"\d{6}", na=False)]
     if x.empty:
@@ -313,6 +325,9 @@ def calc_ai_scores(main_row: pd.Series, df_all: pd.DataFrame) -> dict:
     }
 
 
+# =========================
+# 主力成本（VWAP）— ✅ 同樣以 regular 優先
+# =========================
 @st.cache_data(ttl=60 * 30, show_spinner=False)
 def fetch_tx_contract_history(end_date: dt.date, contract_yyyymm: str, lookback_days: int = 60) -> pd.DataFrame:
     start_date = end_date - dt.timedelta(days=lookback_days)
@@ -327,8 +342,9 @@ def fetch_tx_contract_history(end_date: dt.date, contract_yyyymm: str, lookback_
         return df
 
     df = df[df["futures_id"].astype(str) == "TX"].copy()
-    if "trading_session" in df.columns:
-        df = df[df["trading_session"].astype(str) == "after_market"]
+
+    # ✅ session 統一：優先 regular（避免夜盤跨日把週末算進來）
+    df, _ = pick_session_rows(df, prefer=("regular", "after_market"))
 
     df["contract_date_str"] = df["contract_date"].astype(str)
     df = df[df["contract_date_str"].str.fullmatch(r"\d{6}", na=False)]
@@ -362,12 +378,13 @@ def calc_cost_vwap(df_hist: pd.DataFrame, n: int = 20, price_col: str = "close_n
     return float((x[price_col] * x["vol_num"]).sum() / vol_sum)
 
 
+# =========================
+# 方向分數（-100%~+100%）
+# =========================
 def calc_directional_score(
     close_price: float,
     vwap20: float | None,
     vol_ratio: float | None,
-    pcr: float | None,
-    atm_iv: float | None,
     open_price: float | None = None,
 ) -> dict:
     scores = {}
@@ -382,9 +399,6 @@ def calc_directional_score(
         scores["volume"] = clamp01((float(vol_ratio) - 1.0) * 1.2)
     else:
         scores["volume"] = 0.0
-
-    scores["pcr"] = 0.0 if pcr is None else clamp01((1.0 - float(pcr)) * 1.5)
-    scores["iv"] = 0.0 if atm_iv is None else clamp01((20.0 - float(atm_iv)) / 20.0)
 
     if open_price is not None and float(open_price) > 0:
         scores["intraday"] = clamp01((close_price - float(open_price)) / float(open_price) * 5.0)
@@ -401,16 +415,17 @@ today = dt.date.today()
 target_date = st.date_input("查詢日期（盤後）", value=today)
 
 with st.spinner("抓取 TX 盤後資料中..."):
-    valid_date, df_tx = backtrack_find_valid_date(target_date, max_back_days=14)
+    valid_date, df_tx, session_used = backtrack_find_valid_date(target_date, max_back_days=14)
 
 if valid_date is None or df_tx.empty:
     st.error("目前抓不到 TX 盤後資料（可能連續假期 / 或資料尚未更新 / 或 Token 權限問題）。")
     st.stop()
 
 st.markdown("### 📌 TXF 盤後資料（自動回溯找最近有效交易日）")
-st.success(f"✅ 抓到資料！你選的日期：{to_ymd(target_date)} → 實際抓到資料日期：{to_ymd(valid_date)}")
+st.success(f"✅ 你選的日期：{to_ymd(target_date)} → 顯示交易日：{to_ymd(valid_date)}（session：{session_used}）")
 st.caption(f"筆數：{len(df_tx)}")
 
+# 主力與 AI
 main_row = pick_main_contract(df_tx)
 if main_row is None:
     st.warning("抓到資料，但找不到可判定的『主力單一合約』（可能資料結構變更或欄位異常）。")
@@ -419,7 +434,7 @@ if main_row is None:
 
 ai = calc_ai_scores(main_row, df_tx)
 
-# ✅ 方向以原始 ai 為準
+# ✅ 方向以 ai 為準（偏多紅、偏空綠）
 raw_dir = str(ai.get("direction_text", "震盪/中性"))
 if "偏多" in raw_dir:
     mood_class = "bull"
@@ -434,6 +449,7 @@ else:
 # 主力成本
 main_contract = ai["main_contract"]
 df_main_hist = fetch_tx_contract_history(valid_date, main_contract, lookback_days=60)
+
 vwap_20_close = calc_cost_vwap(df_main_hist, n=20, price_col="close_num")
 vwap_10_close = calc_cost_vwap(df_main_hist, n=10, price_col="close_num")
 vwap_20_settle = calc_cost_vwap(df_main_hist, n=20, price_col="settle_num")
@@ -448,8 +464,6 @@ try:
         close_price=float(main_row.get("close", 0) or 0),
         vwap20=vwap_20_close,
         vol_ratio=ai.get("vol_ratio"),
-        pcr=None,
-        atm_iv=None,
         open_price=main_row.get("open"),
     )
     WEIGHTS = {"cost": 0.45, "volume": 0.25, "intraday": 0.30}
@@ -459,7 +473,7 @@ except Exception:
     final_score_pct = 0
     factor_scores = {}
 
-# ✅ 關鍵：方向強度正負號強制跟「原始方向」一致
+# ✅ 正負號強制跟方向一致
 if mood_text == "偏空":
     final_score_pct = -abs(int(final_score_pct))
 elif mood_text == "偏多":
@@ -536,6 +550,7 @@ with st.expander("📌 主力成本與量能細節", expanded=True):
 
 st.divider()
 
+# 顯示表格（已是 session 過濾後的 df_tx）
 show_cols = [
     "date", "futures_id", "contract_date",
     "open", "max", "min", "close",
@@ -558,6 +573,8 @@ with st.expander("📊 盤後原始資料表（點我展開）", expanded=False)
 
 if debug_mode:
     st.divider()
+    st.subheader("🔎 Debug：session_used")
+    st.write(session_used)
     st.subheader("🔎 Debug：主力合約原始列")
     st.write(main_row.to_dict())
     st.subheader("🔎 Debug：方向因子分數")
