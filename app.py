@@ -15,6 +15,9 @@ import streamlit as st
 # 基本設定
 # =========================
 st.set_page_config(page_title="台指期貨 / 選擇權 AI 儀表板", layout="wide")
+final_score_pct = 0  # 保底預設，避免 NameError
+direction_text = "中性"
+
 
 APP_TITLE = "台指期貨 / 選擇權 AI 儀表板（第二階段：真實盤後資料接入）"
 st.title(APP_TITLE)
@@ -463,6 +466,12 @@ with k1:
     st.metric("方向", ai["direction_text"])
 
 with k2:
+    # 保底：就算前面沒算到也不會炸
+try:
+    _ = final_score_pct
+except NameError:
+    final_score_pct = 0
+    
     direction_text = (
     "強烈偏多" if final_score_pct >= 60 else
     "偏多" if final_score_pct >= 20 else
@@ -508,30 +517,31 @@ with k5:
     st.metric("TXF 盤後收盤", f'{ai["tx_last_price"]:.0f}', delta=f'{ai["tx_spread_points"]:+.0f} 點')
 
 
-# ===== Final Directional Score (-100% ~ +100%) =====
-factor_scores = calc_directional_score(
-    close_price=main_row["close"],
-    vwap20=vwap_20_close,
-    vol_ratio=ai["vol_ratio"],
-    pcr=ai["pcr"],
-    atm_iv=ai["atm_iv"],
-    open_price=main_row.get("open"),
-)
+try:
+    # ===== Final Directional Score (-100% ~ +100%) =====
+    factor_scores = calc_directional_score(
+        close_price=main_row["close"],
+        vwap20=vwap_20_close,
+        vol_ratio=ai.get("vol_ratio"),
+        pcr=ai.get("pcr"),
+        atm_iv=ai.get("atm_iv"),
+        open_price=main_row.get("open"),
+    )
 
-WEIGHTS = {
-    "cost": 0.35,
-    "volume": 0.20,
-    "pcr": 0.20,
-    "iv": 0.15,
-    "intraday": 0.10,
-}
+    WEIGHTS = {
+        "cost": 0.35,
+        "volume": 0.20,
+        "pcr": 0.20,
+        "iv": 0.15,
+        "intraday": 0.10,
+    }
 
-raw_score = sum(
-    factor_scores[k] * WEIGHTS[k]
-    for k in WEIGHTS
-)
+    raw_score = sum(factor_scores.get(k, 0.0) * WEIGHTS[k] for k in WEIGHTS)
+    final_score_pct = int(clamp(raw_score) * 100)
 
-final_score_pct = int(clamp(raw_score) * 100)
+except Exception:
+    final_score_pct = 0
+
 
 # 額外資訊（讓你確認主力選擇是對的）
 info1, info2, info3, info4, info5, info6 = st.columns(6)
