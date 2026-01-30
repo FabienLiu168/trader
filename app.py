@@ -206,7 +206,8 @@ def calc_option_market_bias_v2(df_today, df_prev, settlement_price, atm_range=2)
     if df_today is None or df_today.empty:
         return None
 
-    cp_col = next((c for c in ["option_type","call_put","right"] if c in df_today.columns), None)
+    # ---------- 欄位安全判斷 ----------
+    cp_col = next((c for c in ["option_type", "call_put", "right"] if c in df_today.columns), None)
     if cp_col is None:
         return None
 
@@ -226,45 +227,79 @@ def calc_option_market_bias_v2(df_today, df_prev, settlement_price, atm_range=2)
     t = prep(df_today)
     p = prep(df_prev) if df_prev is not None else pd.DataFrame()
 
-    call, put = t[t["cp"]=="call"], t[t["cp"]=="put"]
+    call = t[t["cp"]=="call"]
+    put  = t[t["cp"]=="put"]
     if call.empty or put.empty:
         return None
 
-    total_oi = call["oi"].sum() + put["oi"].sum()
-    oi_center = ((call["strike"]*call["oi"]).sum() + (put["strike"]*put["oi"]).sum()) / total_oi
-    call_pressure = call.loc[call["oi"].idxmax()]["strike"]
-    put_support = put.loc[put["oi"].idxmax()]["strike"]
+    # ✅ 關鍵修正：同 strike 合併 OI
+    call_oi = call.groupby("strike")["oi"].sum()
+    put_oi  = put.groupby("strike")["oi"].sum()
 
-    delta_call = delta_put = 0
+    total_oi = call_oi.sum() + put_oi.sum()
+    if total_oi <= 0:
+        return None
+
+    oi_center = (
+        (call_oi.index * call_oi.values).sum() +
+        (put_oi.index * put_oi.values).sum()
+    ) / total_oi
+
+    call_pressure = call_oi.idxmax()
+    put_support   = put_oi.idxmax()
+
+    # ---------- ΔOI ----------
+    delta_call = delta_put = 0.0
     if not p.empty:
-        atm = round(settlement_price/50)*50
-        strikes = sorted(call["strike"].unique())
+        prev_call_oi = p[p["cp"]=="call"].groupby("strike")["oi"].sum()
+        prev_put_oi  = p[p["cp"]=="put"].groupby("strike")["oi"].sum()
+
+        atm = round(settlement_price / 50) * 50
+        strikes = sorted(call_oi.index.tolist())
+
+        if not strikes:
+            return None
+
         idx = strikes.index(atm) if atm in strikes else len(strikes)//2
-        sel = strikes[max(0,idx-atm_range):idx+atm_range+1]
+        sel = strikes[max(0, idx-atm_range): idx+atm_range+1]
 
-        delta_call = (call.set_index("strike")["oi"].reindex(sel).fillna(0) -
-                      p[p["cp"]=="call"].set_index("strike")["oi"].reindex(sel).fillna(0)).sum()
-        delta_put  = (put.set_index("strike")["oi"].reindex(sel).fillna(0) -
-                      p[p["cp"]=="put"].set_index("strike")["oi"].reindex(sel).fillna(0)).sum()
+        delta_call = (call_oi.reindex(sel).fillna(0) - prev_call_oi.reindex(sel).fillna(0)).sum()
+        delta_put  = (put_oi.reindex(sel).fillna(0)  - prev_put_oi.reindex(sel).fillna(0)).sum()
 
+    # ---------- 評分 ----------
     score_structure = 1 if settlement_price > oi_center else -1 if settlement_price < oi_center else 0
-    score_flow = 1 if delta_call>0 and settlement_price>oi_center else -1 if delta_call>0 and settlement_price<oi_center else 0
-    score_price = 1 if settlement_price>call_pressure else -1 if settlement_price<put_support else 0
+
+    if delta_call > 0 and settlement_price > oi_center:
+        score_flow = 1        # 軋空
+    elif delta_call > 0 and settlement_price < oi_center:
+        score_flow = -1       # 空方加碼
+    elif delta_put > 0 and settlement_price < oi_center:
+        score_flow = -1
+    else:
+        score_flow = 0
+
+    score_price = 1 if settlement_price > call_pressure else -1 if settlement_price < put_support else 0
 
     final_score = 0.35*score_structure + 0.45*score_flow + 0.20*score_price
 
-    bias, cls = ("偏多","bull") if final_score>=0.5 else ("偏空","bear") if final_score<=-0.5 else ("結構中性","neut")
+    if final_score >= 0.5:
+        bias, cls = "偏多", "bull"
+    elif final_score <= -0.5:
+        bias, cls = "偏空", "bear"
+    else:
+        bias, cls = "結構中性", "neut"
 
     return {
         "bias": bias,
         "cls": cls,
-        "score": round(final_score,2),
+        "score": round(final_score, 2),
         "oi_center": oi_center,
         "call_pressure": call_pressure,
         "put_support": put_support,
         "delta_call": delta_call,
         "delta_put": delta_put,
     }
+
 
 df_opt_today = fetch_option_for_trade_date(trade_date)
 df_opt_prev = fetch_option_prev_trade_date(trade_date)
