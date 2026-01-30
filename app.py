@@ -316,6 +316,69 @@ if valid_date is None or df_tx.empty:
         st.info("Debug 建議：確認 FINMIND_TOKEN、以及 FinMind 服務狀態。")
     st.stop()
 
+@st.cache_data(ttl=60 * 30, show_spinner=False)
+def fetch_tx_contract_history(end_date: dt.date, contract_yyyymm: str, lookback_days: int = 35) -> pd.DataFrame:
+    """
+    抓取 TX 指定單一合約 (contract_date=YYYYMM) 在最近一段期間的盤後日資料
+    - lookback_days 取大一點（例如 35）是為了包含假日/沒資料日，最後再用 N 筆交易日計算
+    """
+    start_date = end_date - dt.timedelta(days=lookback_days)
+    df = finmind_get(
+        dataset="TaiwanFuturesDaily",
+        data_id="TX",
+        start_date=to_ymd(start_date),
+        end_date=to_ymd(end_date),
+        token=FINMIND_TOKEN,
+    )
+    if df.empty:
+        return df
+
+    df = df[df["futures_id"].astype(str) == "TX"].copy()
+
+    if "trading_session" in df.columns:
+        df = df[df["trading_session"].astype(str) == "after_market"]
+
+    # 只留單一合約
+    df["contract_date_str"] = df["contract_date"].astype(str)
+    df = df[df["contract_date_str"].str.fullmatch(r"\d{6}", na=False)]
+    df = df[df["contract_date_str"] == str(contract_yyyymm)]
+
+    # 數字化
+    df["close_num"] = pd.to_numeric(df.get("close", 0), errors="coerce")
+    df["settle_num"] = pd.to_numeric(df.get("settlement_price", 0), errors="coerce")
+    df["vol_num"] = pd.to_numeric(df.get("volume", 0), errors="coerce").fillna(0)
+
+    # date 轉 datetime 方便排序
+    df["date_dt"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(subset=["date_dt"]).sort_values("date_dt")
+
+    return df
+
+
+def calc_cost_vwap(df_hist: pd.DataFrame, n: int = 20, price_col: str = "close_num") -> float | None:
+    """
+    用最近 n 筆交易日做 VWAP（成交量加權均價）
+    price_col 可用 close_num 或 settle_num
+    """
+    if df_hist is None or df_hist.empty:
+        return None
+
+    x = df_hist.tail(n).copy()
+    if price_col not in x.columns:
+        return None
+
+    x = x.dropna(subset=[price_col])
+    if x.empty:
+        return None
+
+    vol_sum = float(x["vol_num"].sum())
+    if vol_sum <= 0:
+        # 如果 volume 全為 0，就退化成簡單平均
+        return float(x[price_col].mean())
+
+    vwap = float((x[price_col] * x["vol_num"]).sum() / vol_sum)
+    return vwap
+
 # 顯示回溯結果
 st.markdown("### 📌 TXF 盤後資料（自動回溯找最近有效交易日）")
 st.success(f"✅ 抓到資料！你選的日期：{to_ymd(target_date)} → 實際抓到資料日期：{to_ymd(valid_date)}")
@@ -331,6 +394,20 @@ if main_row is None:
     st.stop()
 
 ai = calc_ai_scores(main_row, df_tx)
+
+# ===== 主力成本均價（估算）=====
+main_contract = ai["main_contract"]  # 例如 "202602"
+df_main_hist = fetch_tx_contract_history(valid_date, main_contract, lookback_days=60)
+
+vwap_20_close = calc_cost_vwap(df_main_hist, n=20, price_col="close_num")
+vwap_10_close = calc_cost_vwap(df_main_hist, n=10, price_col="close_num")
+
+# 若你想用 settlement_price 當代表價（有些人更愛結算價）
+vwap_20_settle = calc_cost_vwap(df_main_hist, n=20, price_col="settle_num")
+
+avg20_close = None
+if df_main_hist is not None and not df_main_hist.empty:
+    avg20_close = float(df_main_hist.tail(20)["close_num"].dropna().mean())
 
 # 顶部 KPI 區
 k1, k2, k3, k4, k5 = st.columns([1.2, 1.2, 1.6, 1.2, 1.2])
@@ -371,11 +448,14 @@ with k5:
     st.metric("TXF 盤後收盤", f'{ai["tx_last_price"]:.0f}', delta=f'{ai["tx_spread_points"]:+.0f} 點')
 
 # 額外資訊（讓你確認主力選擇是對的）
-info1, info2, info3, info4 = st.columns(4)
+info1, info2, info3, info4, info5, info6 = st.columns(6)
 info1.caption(f"主力合約：**{ai['main_contract']}**")
-info2.caption(f"結構：**{ai['structure_text']}**")
-info3.caption(f"波動範圍：**{ai['tx_range_points']:.0f} 點**")
-info4.caption(f"量能比（同日中位數）：**{ai['vol_ratio']}x**")
+info2.caption(f"主力成本(10D VWAP, close)：**{(f'{vwap_10_close:.0f}' if vwap_10_close is not None else '—')}**")
+info3.caption(f"主力成本(20D VWAP, close)：**{(f'{vwap_20_close:.0f}' if vwap_20_close is not None else '—')}**")
+info4.caption(f"主力成本(20D VWAP, settle)：**{(f'{vwap_20_settle:.0f}' if vwap_20_settle is not None else '—')}**")
+info5.caption(f"20D 平均收盤：**{(f'{avg20_close:.0f}' if avg20_close is not None else '—')}**")
+info6.caption(f"量能比（同日中位數）：**{ai['vol_ratio']}x**")
+
 
 st.divider()
 
