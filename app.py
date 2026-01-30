@@ -259,7 +259,7 @@ st.divider()
 st.markdown("## 🧩 選擇權｜ΔOI × 結構 × 價格行為")
 
 df_opt = fetch_option_latest(trade_date)
-opt = calc_option_bias_v3(df_opt, fut["price"])
+opt = calc_option_bias_v3(df_opt, fut_price)
 
 if opt is None:
     st.info("ℹ️ 選擇權資料不足（TXO 為 T+1 公告）")
