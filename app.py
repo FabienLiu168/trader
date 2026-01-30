@@ -153,30 +153,42 @@ def pick_main_contract_position(df, trade_date):
 
 def calc_ai_scores(main_row, df_all):
     open_ = float(main_row.get("open", 0) or 0)
+
     settle = main_row.get("settlement_price")
     close = main_row.get("close")
     final_close = float(settle) if settle not in (None, "", 0) else float(close or 0)
-    high_ = float(main_row.get("max", 0) or 0)
-    low_ = float(main_row.get("min", 0) or 0)
+
     high_ = float(main_row.get("max", 0) or 0)
     low_  = float(main_row.get("min", 0) or 0)
-    day_range = abs(high_ - low_)   # ⭐ 日振幅
 
-    range_ = max(0.0, high_ - low_)
+    # ✅【關鍵修正】先定義 spread
+    spread = final_close - open_
+
+    # 日振幅（你剛剛新增的需求）
+    day_range = abs(high_ - low_)
+
     vol = float(pd.to_numeric(main_row.get("volume", 0), errors="coerce") or 0)
-    vol_med = max(float(pd.to_numeric(df_all["volume"], errors="coerce").median() or 1), 1)
-    score = clamp(spread / 100.0, -3, 3) * 0.7 + clamp((vol / vol_med - 1) * 2, -2, 2) * 0.3
+    vol_med = max(
+        float(pd.to_numeric(df_all["volume"], errors="coerce").median() or 1),
+        1
+    )
+
+    score = (
+        clamp(spread / 100.0, -3, 3) * 0.7 +
+        clamp((vol / vol_med - 1) * 2, -2, 2) * 0.3
+    )
 
     direction = "偏多" if score > 0.8 else "偏空" if score < -0.8 else "中性"
 
     return {
         "direction_text": direction,
         "tx_last_price": final_close,
-        "tx_spread_points": spread,          # 原本留著（如果你其他地方用）
-        "day_range": int(day_range),          # ⭐ 新增：日振幅
-        "risk_score": int(clamp(range_ / 3, 0, 100)),
+        "tx_spread_points": spread,
+        "day_range": day_range,
+        "risk_score": int(clamp(day_range / 3, 0, 100)),
         "consistency_pct": int(abs(score) / 3 * 100),
     }
+
 
 # =========================
 # 期貨資料實際執行
