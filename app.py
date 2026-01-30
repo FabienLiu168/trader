@@ -16,6 +16,51 @@ st.set_page_config(page_title="台指期貨 / 選擇權 AI 儀表板", layout="w
 
 APP_TITLE = "台指期貨 / 選擇權 AI 儀表板（第二階段：真實盤後資料接入）"
 st.title(APP_TITLE)
+st.markdown("""
+<style>
+/* 讓整體上方留白變小，避免畫面浪費 */
+.block-container { padding-top: 1.0rem; padding-bottom: 0.8rem; }
+
+/* KPI 卡片 */
+.kpi-card{
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: rgba(255,255,255,0.04);
+  box-shadow: 0 6px 22px rgba(0,0,0,0.18);
+}
+
+/* 大字標題 */
+.kpi-title{
+  font-size: 0.95rem;
+  opacity: 0.85;
+  margin-bottom: 6px;
+}
+
+/* 超大數字 */
+.kpi-value{
+  font-size: 2.0rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+/* 次資訊 */
+.kpi-sub{
+  font-size: 0.9rem;
+  opacity: 0.75;
+  margin-top: 6px;
+}
+
+/* 多空顏色：你指定「偏多紅、偏空綠」 */
+.bull { color: #FF3B30; } /* 大紅 */
+.bear { color: #34C759; } /* 大綠 */
+.neut { color: #C7C7CC; } /* 灰 */
+
+/* 讓 dataframe 不要把畫面撐太長：可視區域內顯示 */
+[data-testid="stDataFrame"] { border-radius: 12px; overflow: hidden; }
+</style>
+""", unsafe_allow_html=True)
+
 
 # Debug 開關：可用網址加參數 ?debug=1
 params = st.query_params
@@ -404,26 +449,71 @@ direction_text = (
 )
 
 # KPI 區
-k1, k2, k3, k4, k5 = st.columns([1.2, 1.4, 1.6, 1.2, 1.2])
+# ===== KPI 顏色邏輯 =====
+if final_score_pct >= 20:
+    mood_class = "bull"
+    mood_text = "偏多"
+elif final_score_pct <= -20:
+    mood_class = "bear"
+    mood_text = "偏空"
+else:
+    mood_class = "neut"
+    mood_text = "中性"
 
-with k1:
-    st.metric("方向（原始）", ai["direction_text"])
+# 一致性/風險燈號
+cons_dot = "🟢" if ai["consistency_pct"] >= 70 else ("🟠" if ai["consistency_pct"] >= 45 else "🔴")
+risk_dot = "🔴" if ai["risk_score"] >= 70 else ("🟠" if ai["risk_score"] >= 45 else "🟢")
 
-with k2:
-    st.metric("Final Score（方向強度）", f"{final_score_pct:+d}%", help=direction_text)
+# ===== KPI 區（頂部卡片：單螢幕設計）=====
+c1, c2, c3, c4, c5 = st.columns([1.6, 1.6, 1.2, 1.2, 1.4], gap="small")
 
-with k3:
-    dot = "🟢" if ai["consistency_pct"] >= 70 else ("🟠" if ai["consistency_pct"] >= 45 else "🔴")
-    st.metric(f"{dot} 一致性", f'{ai["consistency_pct"]}%')
+with c1:
+    st.markdown(f"""
+    <div class="kpi-card">
+      <div class="kpi-title">方向</div>
+      <div class="kpi-value {mood_class}">{mood_text}</div>
+      <div class="kpi-sub">原始：{ai["direction_text"]} ｜ 主力：{ai["main_contract"]}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-with k4:
-    dot = "🔴" if ai["risk_score"] >= 70 else ("🟠" if ai["risk_score"] >= 45 else "🟢")
-    st.metric(f"{dot} 風險", f'{ai["risk_score"]}/100')
+with c2:
+    st.markdown(f"""
+    <div class="kpi-card">
+      <div class="kpi-title">方向強度（-100%~+100%）</div>
+      <div class="kpi-value {mood_class}">{final_score_pct:+d}%</div>
+      <div class="kpi-sub">{direction_text}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-with k5:
-    st.metric("TXF 盤後收盤", f'{ai["tx_last_price"]:.0f}', delta=f'{ai["tx_spread_points"]:+.0f} 點')
+with c3:
+    st.markdown(f"""
+    <div class="kpi-card">
+      <div class="kpi-title">{cons_dot} 一致性</div>
+      <div class="kpi-value">{ai["consistency_pct"]}%</div>
+      <div class="kpi-sub">多因子同向程度</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with c4:
+    st.markdown(f"""
+    <div class="kpi-card">
+      <div class="kpi-title">{risk_dot} 風險</div>
+      <div class="kpi-value">{ai["risk_score"]}/100</div>
+      <div class="kpi-sub">波動與不確定性</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with c5:
+    st.markdown(f"""
+    <div class="kpi-card">
+      <div class="kpi-title">TXF 盤後收盤</div>
+      <div class="kpi-value">{ai["tx_last_price"]:.0f}</div>
+      <div class="kpi-sub">日變化：{ai["tx_spread_points"]:+.0f} 點 ｜ 區間：{ai["tx_range_points"]:.0f} 點</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 # 額外資訊
+with st.expander("📌 主力成本與量能細節", expanded=True):
 info1, info2, info3, info4, info5, info6 = st.columns(6)
 info1.caption(f"主力合約：**{ai['main_contract']}**")
 info2.caption(f"主力成本(10D VWAP)：**{(f'{vwap_10_close:.0f}' if vwap_10_close is not None else '—')}**")
@@ -452,7 +542,9 @@ df_single = df_show[is_single].sort_values("contract_date_str")
 df_spread = df_show[~is_single].sort_values("contract_date_str")
 df_show2 = pd.concat([df_single, df_spread], ignore_index=True).drop(columns=["contract_date_str"], errors="ignore")
 
-st.dataframe(df_show2, width="stretch")
+with st.expander("📊 盤後原始資料表（點我展開）", expanded=False):
+    st.dataframe(df_show2, width="stretch", height=240)
+
 
 if debug_mode:
     st.divider()
