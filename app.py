@@ -10,7 +10,7 @@ import streamlit as st
 # =========================
 # 基本設定
 # =========================
-st.set_page_config(page_title="大盤趨勢/個股期貨 看盤儀表板(法酷的交易世界)", layout="wide")
+st.set_page_config(page_title="大盤趨勢/個股期貨 看盤儀表板  (法酷的交易世界)", layout="wide")
 
 APP_TITLE = "大盤趨勢/個股期貨 看盤儀表板(法酷的交易世界)"
 
