@@ -65,13 +65,13 @@ st.markdown(
 
     /* date_input 標題文字 */
     div[data-testid="stDateInput"] label {
-        font-size: 1.5rem;
+        font-size: 1.7rem;
         font-weight: 600;
     }
 
     /* date_input 內的日期數字 */
     div[data-testid="stDateInput"] input {
-        font-size: 1.6rem;
+        font-size: 1.7rem;
         font-weight: 600;
         height: 2.4rem;
     }
