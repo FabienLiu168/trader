@@ -473,9 +473,9 @@ def render_tab_stock_futures(trade_date: dt.date):
 
     df_top = fetch_top10_by_volume(trade_date)
 
-if df_top.empty:
-    st.warning("⚠️ 查詢日無成交量資料")
-    return
+    if df_top.empty:
+        st.warning("⚠️ 查詢日無成交量資料")
+        return
 
 rows = []
 
