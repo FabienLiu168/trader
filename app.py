@@ -48,7 +48,7 @@ div[data-testid="stAppViewContainer"] > .main { padding-top: 3.2rem; }
 
 .bull{color:#FF3B30}
 .bear{color:#34C759}
-.neut{color:#000000}
+.neut{color:#FFFFFF}
 
 /* 選擇權區段標題 */
 .opt-section-title{
@@ -69,7 +69,6 @@ st.markdown(
 <div class="app-subtitle">
 ✅ 期貨基準：Position 結算價　
 ✅ 選擇權：ΔOI × 結構 × 價格行為　
-❌ 非交易日不顯示資料
 </div>
 """,
     unsafe_allow_html=True,
