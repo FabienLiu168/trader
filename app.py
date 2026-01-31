@@ -202,8 +202,22 @@ def fetch_top10_volume_from_twse(trade_date: dt.date) -> pd.DataFrame:
         "response": "json",
     }
 
-    r = requests.get(url, params=params, timeout=15)
+    # r = requests.get(url, params=params, timeout=15)
+    headers = {
+    "User-Agent": "Mozilla/5.0 (compatible; StockBot/1.0)"
+}
+
+r = requests.get(
+    url,
+    params=params,
+    headers=headers,
+    timeout=15,
+    verify=False   # ✅ 關鍵：關閉 SSL 驗證
+)
+
     j = r.json()
+    except Exception:
+        return pd.DataFrame()
 
     if j.get("stat") != "OK":
         return pd.DataFrame()
