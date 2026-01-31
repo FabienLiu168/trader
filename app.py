@@ -718,13 +718,19 @@ def render_tab_stock_futures(trade_date: dt.date):
 
     for sid in top10_ids:
         df = fetch_single_stock_daily(sid, trade_date)
-        df_day = df[df["date"] == trade_date.strftime("%Y-%m-%d")]
-
+        
+        # ✅ 關鍵防呆 1：df 為空
         if df_day.empty:
             continue
-
+        # ✅ 關鍵防呆 2：沒有 date 欄位
+        if "date" not in df.columns:
+            continue
+        df_day = df[df["date"] == trade_date.strftime("%Y-%m-%d")]
+        
+        if df_day.empty:
+            continue
+        
         r = df_day.iloc[0]
-
         rows.append({
             "股票代碼": sid,
             "股票名稱": r.get("stock_name", ""),
