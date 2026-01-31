@@ -191,32 +191,19 @@ def fetch_top10_volume_from_twse(trade_date: dt.date) -> pd.DataFrame:
     """
     由 TWSE 官方取得「當日成交量前 10 名股票」
     """
-    st.write("TWSE columns:", df.columns.tolist())
+
     # TWSE 使用民國年
-    date_str = trade_date.strftime("%Y%m%d")
+    roc_year = trade_date.year - 1911
+    date_str = f"{roc_year}{trade_date.strftime('%m%d')}"
 
     url = "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX20"
     params = {
         "date": date_str,
-        "type": "ALL",        # ✅ 必須要
         "response": "json",
     }
 
-    headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; StockBot/1.0)"
-    }
-
-    try:
-        r = requests.get(
-            url,
-            params=params,
-            headers=headers,
-            timeout=15,
-            verify=False,   # ⚠️ 避免 SSL Error（Streamlit Cloud 必須）
-        )
-        j = r.json()
-    except Exception:
-        return pd.DataFrame()
+    r = requests.get(url, params=params, timeout=15)
+    j = r.json()
 
     if j.get("stat") != "OK":
         return pd.DataFrame()
@@ -235,24 +222,19 @@ def fetch_top10_volume_from_twse(trade_date: dt.date) -> pd.DataFrame:
         "收盤價": "收盤",
     })
 
-    # 數值清洗
-    numeric_cols = ["成交量", "成交金額", "開盤", "最高", "最低", "收盤"]
+    # ✅ 注意：for 跟 df 是「同一層縮排」
+    for col in ["成交量", "成交金額", "開盤", "最高", "最低", "收盤"]:
+        if col not in df.columns:
+            continue
+        df[col] = (
+            df[col]
+            .astype(str)
+            .str.replace(",", "", regex=False)
+            .replace("--", None)
+        )
+        df[col] = pd.to_numeric(df[col], errors="coerce")
 
-for col in numeric_cols:
-    if col not in df.columns:
-        continue  # ✅ 欄位不存在就跳過，不炸
-    df[col] = (
-        df[col]
-        .astype(str)
-        .str.replace(",", "", regex=False)
-        .replace("--", None)
-    )
-    df[col] = pd.to_numeric(df[col], errors="coerce")
-
-
-    # 官方資料本身已依成交量排序
-return df.head(10)
-
+    return df.head(10)
 
     # 數值清洗
     for col in ["成交量", "成交金額", "開盤", "最高", "最低", "收盤"]:
