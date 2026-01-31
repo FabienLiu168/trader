@@ -153,17 +153,6 @@ FINMIND_TOKEN = get_finmind_token()
 FINMIND_API = "https://api.finmindtrade.com/api/v4/data"
 
 @st.cache_data(ttl=600, show_spinner=False)
-def fetch_stock_trading_daily(trade_date: dt.date):
-    df = finmind_get(
-        dataset="TaiwanStockTradingDaily",
-        data_id=None,  # ⚠️ 這個 dataset 不用給 stock_id
-        start_date=trade_date.strftime("%Y-%m-%d"),
-        end_date=trade_date.strftime("%Y-%m-%d"),
-    )
-    return df
-
-
-@st.cache_data(ttl=600, show_spinner=False)
 def finmind_get(dataset, data_id, start_date, end_date):
     params = {
         "dataset": dataset,
@@ -192,13 +181,12 @@ def finmind_get(dataset, data_id, start_date, end_date):
 
     return pd.DataFrame(j.get("data", []))
 
-
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_single_stock_daily(stock_id: str, trade_date: dt.date):
     df = finmind_get(
-        dataset="TaiwanStockPrice",   # ✅ 正確 dataset
+        dataset="TaiwanStockPrice",   # ✅ 正確
         data_id=stock_id,
-        start_date=trade_date.strftime("%Y-%m-%d"),
+        start_date=(trade_date - dt.timedelta(days=3)).strftime("%Y-%m-%d"),
         end_date=trade_date.strftime("%Y-%m-%d"),
     )
     return df
@@ -399,11 +387,9 @@ def render_tab_option_market(trade_date: dt.date):
 def render_tab_stock_futures(trade_date: dt.date):
 
     st.markdown(
-        "<h2 class='fut-section-title'>📊 個股期貨｜單一股票資料測試（最小驗證）</h2>",
+        "<h2 class='fut-section-title'>📊 個股期貨｜單一股票資料驗證</h2>",
         unsafe_allow_html=True,
     )
-
-    st.caption("🎯 目的：確認 FinMind TaiwanStockPrice 是否成功回傳資料")
 
     for sid, name in [("2330", "台積電"), ("2303", "聯電")]:
         st.subheader(f"🔍 {sid} {name}")
@@ -411,10 +397,28 @@ def render_tab_stock_futures(trade_date: dt.date):
         df = fetch_single_stock_daily(sid, trade_date)
 
         if df.empty:
-            st.warning(f"⚠️ {sid} 該日 FinMind 無回傳資料")
-        else:
-            st.success(f"✅ 成功取得 {sid} 資料")
-            st.dataframe(df, use_container_width=True)
+            st.warning(f"⚠️ {sid} FinMind 無回傳資料")
+            continue
+
+        st.success(f"✅ 成功取得 {sid} 資料（共 {len(df)} 筆）")
+
+        # 🔥 不要只顯示 raw，先排序一下
+        df = df.sort_values("date")
+
+        st.dataframe(
+            df[
+                [
+                    "date",
+                    "open",
+                    "max",
+                    "min",
+                    "close",
+                    "Trading_Volume",
+                    "Trading_money",
+                ]
+            ],
+            use_container_width=True,
+        )
 
 # =========================
 # 主流程
@@ -428,16 +432,7 @@ if not is_trading_day(trade_date):
 tab1, tab2 = st.tabs(["📈 期權大盤", "📊 個股期貨"])
 
 st.subheader("🧪 FinMind 最小測試")
-
-df_test = finmind_get(
-    dataset="TaiwanStockTradingDaily",
-    data_id=None,
-    start_date="2024-12-02",
-    end_date="2024-12-02",
-)
-
 st.dataframe(df_test)
-
 
 with tab1:
     render_tab_option_market(trade_date)
