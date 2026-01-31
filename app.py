@@ -472,7 +472,6 @@ def render_tab_stock_futures(trade_date: dt.date):
 # =========================
 # 主流程（Tabs）
 # =========================
-trade_date = st.date_input("📅 查詢交易日（結算）", value=dt.date.today())
 
 if not is_trading_day(trade_date):
     st.warning("📅 非交易日（週六 / 週日）不顯示任何資料")
