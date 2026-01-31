@@ -390,27 +390,31 @@ def render_tab_stock_futures(trade_date: dt.date):
         st.subheader(f"🔍 {sid} {name}")
 
         df = fetch_single_stock_daily(sid, trade_date)
-        # ✅【關鍵】只保留查詢交易日當天
+
+        # ✅ 只保留查詢交易日當天
         df = df[df["date"] == trade_date.strftime("%Y-%m-%d")]
 
         if df.empty:
             st.warning(f"⚠️ {sid} {trade_date} 無當日資料")
             continue
-        df = df.sort_values("date")
 
-    # ✅ 重組成你要的欄位格式
-    df_view = pd.DataFrame([{
-        "股票代碼": sid,
-        "股票名稱": name,
-        "open": df_day.iloc[0]["open"],
-        "max": df_day.iloc[0]["max"],
-        "min": df_day.iloc[0]["min"],
-        "close": df_day.iloc[0]["close"],
-        "Trading_Volume": df_day.iloc[0]["Trading_Volume"],
-        "Trading_money": df_day.iloc[0]["Trading_money"],
-    }])
+        row = df.iloc[0]  # ✅ 明確取當日那一筆
+
+        # ✅ 重組顯示用資料（不含 date）
+        df_view = pd.DataFrame([{
+            "股票代碼": sid,
+            "股票名稱": name,
+            "open": row["open"],
+            "max": row["max"],
+            "min": row["min"],
+            "close": row["close"],
+            "Trading_Volume": row["Trading_Volume"],
+            "Trading_money": row["Trading_money"],
+        }])
+
         st.success(f"✅ 成功取得 {sid}（{trade_date}）資料")
         st.dataframe(df_view, use_container_width=True)
+
 # =========================
 # 主流程
 # =========================
