@@ -12,7 +12,7 @@ import streamlit as st
 # =========================
 st.set_page_config(page_title="大盤趨勢/個股期貨 看盤儀表板  (法酷交易室)", layout="wide")
 
-APP_TITLE = "大盤趨勢/個股期貨 看盤儀表板(法酷的交易世界)"
+APP_TITLE = "大盤趨勢/個股期貨 看盤儀表板(法酷交易室)"
 
 st.markdown(
     """
