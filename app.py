@@ -29,6 +29,23 @@ div[data-testid="stAppViewContainer"] > .main { padding-top: 3.2rem; }
   align-items:center;
 }
 
+/* =========================
+   查詢交易日（Date Input）
+   ========================= */
+
+/* 標題文字（📅 查詢交易日） */
+div[data-testid="stDateInput"] label {
+  font-size: 1.5rem;     /* 👈 標題大小 */
+  font-weight: 500;
+}
+
+/* 日期數值（輸入框內） */
+div[data-testid="stDateInput"] input {
+  font-size: 1.6rem;     /* 👈 日期數字大小（通常比標題再大一點） */
+  font-weight: 500;
+  height: 3rem;          /* 👈 可選：讓整個框更大 */
+}
+
 /* Tabs 模組名稱字形大小 */
 button[data-baseweb="tab"] > div {
   font-size: 1.5rem;   /* 👈 你要的大小，例如 1.1 / 1.3 / 1.5 */
