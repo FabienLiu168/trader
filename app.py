@@ -704,16 +704,16 @@ def render_tab_option_market(trade_date: dt.date):
 # 第二模組：個股期貨（測試版）
 # =========================
 def render_tab_stock_futures(trade_date: dt.date):
-    
+    # 1️⃣ 先抓 TWSE Top10（list[str]）
     top10_ids = fetch_top10_by_volume_twse_csv(trade_date)
 
     st.write("📊 TWSE CSV 成交量 Top10 股票代碼：")
     st.write(top10_ids)
-
-    if df_view.empty:
-        st.warning("⚠️ if df_view.empty:")
+    if not top10_ids:
+        st.warning("⚠️ TWSE 無法取得成交量排行")
         return
-
+        
+    # 2️⃣ 用 Top10 代碼去抓 FinMind
     rows = []
 
     for sid in top10_ids:
@@ -735,26 +735,18 @@ def render_tab_stock_futures(trade_date: dt.date):
             "成交量": f"{int(r['Trading_Volume'] / 10000):,} 萬",
             "成交金額": f"{int(r['Trading_money'] / 1_000_000):,} 百萬",
         })
-
+        
+    # 3️⃣ ⭐ 只在「這裡」判斷 rows
     if not rows:
         st.warning("⚠️ FinMind 無法取得對應個股資料")
         return
+    
+    # 4️⃣ 建立 df_view（這是唯一正確位置）
+    df_view = pd.DataFrame(rows)
 
-    render_stock_table_html(pd.DataFrame(rows))
-
-
-    if df_top10.empty:
-        st.warning("⚠️ TWSE 無法取得成交量資料")
-    else:
-        st.write(df_top10["股票代碼"].tolist())
-        
-
-    if not rows:
-        st.warning("⚠️ 查詢日無任何個股資料")
-        return
-
-    render_stock_table_html(pd.DataFrame(rows))
-
+    # 5️⃣ 顯示表格
+    render_stock_table_html(df_view)
+    # render_stock_table_html(pd.DataFrame(rows))
 
 # =========================
 # 主流程
