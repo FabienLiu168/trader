@@ -710,8 +710,8 @@ def render_tab_stock_futures(trade_date: dt.date):
     st.write("📊 TWSE CSV 成交量 Top10 股票代碼：")
     st.write(top10_ids)
 
-    if not top10_ids:
-        st.warning("⚠️ 查詢日無成交量資料")
+    if not top10_ids is None or top10_ids.empty:
+        st.warning("⚠️ 查詢日無前十大成交量資料")
         return
 
     rows = []
