@@ -19,7 +19,7 @@ st.markdown(
 <style>
 div[data-testid="stAppViewContainer"] > .main { padding-top: 3.2rem; }
 
-.app-title{ font-size:2.5rem;font-weight:750;margin-top:-65px;text-align:center;letter-spacing:0.5px;margin-bottom:1px; }
+.app-title{ font-size:2.5rem;font-weight:750;margin-top:-62px;text-align:center;letter-spacing:0.5px;margin-bottom:1px; }
 .app-subtitle{ font-size:1.0rem;margin:.45rem 0 1.1rem;text-align:center; }
 
 .fut-section-title,.opt-section-title{
