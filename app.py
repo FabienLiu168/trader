@@ -454,22 +454,9 @@ def render_tab_option_market(trade_date: dt.date):
 def render_tab_stock_futures(trade_date: dt.date):
 
     st.markdown(
-        """
-        <style>
-        div[data-testid="stDataFrame"] * {
-            font-size:3.8rem !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-    
-    st.markdown(
         "<h2 class='fut-section-title'>📊 個股期貨｜前十大成交量個股</h2>",
         unsafe_allow_html=True,
     )
-
-    rows = []  # ✅ 收集所有股票的資料列
 
     df_top = fetch_top10_by_volume(trade_date)
 
@@ -477,20 +464,19 @@ def render_tab_stock_futures(trade_date: dt.date):
         st.warning("⚠️ 查詢日無成交量資料")
         return
 
-rows = []
+    rows = []
 
-for _, r in df_top.iterrows():
-    rows.append({
-        "股票代碼": r["stock_id"],
-        "股票名稱": r.get("stock_name", ""),  # 有就顯示，沒有也不會壞
-        "開盤": r["open"],
-        "最高": r["max"],
-        "最低": r["min"],
-        "收盤": r["close"],
-        "成交量": r["Trading_Volume"],
-        "成交金額": r["Trading_money"],
-    })
-
+    for _, r in df_top.iterrows():
+        rows.append({
+            "股票代碼": r["stock_id"],
+            "股票名稱": r.get("stock_name", ""),
+            "開盤": r["open"],
+            "最高": r["max"],
+            "最低": r["min"],
+            "收盤": r["close"],
+            "成交量": r["Trading_Volume"],
+            "成交金額": r["Trading_money"],
+        })
 
     if not rows:
         st.warning("⚠️ 查詢日無任何個股資料")
@@ -498,7 +484,6 @@ for _, r in df_top.iterrows():
 
     df_view = pd.DataFrame(rows)
 
-    # === 顯示用格式轉換（不影響原始數據） ===
     df_view["成交量"] = (
         df_view["成交量"] / 10_000
     ).round(0).astype(int).map(lambda x: f"{x:,} 萬")
@@ -507,7 +492,6 @@ for _, r in df_top.iterrows():
         df_view["成交金額"] / 1_000_000
     ).round(0).astype(int).map(lambda x: f"{x:,} 百萬")
 
-   # st.dataframe(df_view, use_container_width=True, hide_index=True)
     render_stock_table_html(df_view)
 
 # =========================
