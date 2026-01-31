@@ -133,10 +133,10 @@ button[data-baseweb="tab"]:hover {
 st.markdown(
     f"""
     <div class="app-title">{APP_TITLE}</div>
-    #<div class="app-subtitle">
+    <div class="app-subtitle">
     #    ✅ 期貨基準：Position 結算價　
     #    ✅ 選擇權：ΔOI × 結構 × 價格行為　
-    #</div>
+    </div>
     """,
     unsafe_allow_html=True,
 )
