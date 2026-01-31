@@ -63,6 +63,19 @@ st.markdown(
     .kpi-value{ font-size:1.7rem;font-weight:500;line-height:1.5 }
     .kpi-sub{ font-size:1.0rem;opacity:.65;line-height:1.5}
 
+    /* date_input 標題文字 */
+    div[data-testid="stDateInput"] label {
+        font-size: 1.5rem;
+        font-weight: 600;
+    }
+
+    /* date_input 內的日期數字 */
+    div[data-testid="stDateInput"] input {
+        font-size: 1.6rem;
+        font-weight: 600;
+        height: 2.4rem;
+    }
+
     /* =========================
    Tabs：黑底白字（未選中）
    ========================= */
