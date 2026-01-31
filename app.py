@@ -6,6 +6,7 @@ import datetime as dt
 import requests
 import pandas as pd
 import streamlit as st
+import io
 
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -235,7 +236,7 @@ def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
         return pd.DataFrame()
 
     df = pd.read_csv(
-        pd.compat.StringIO("\n".join(lines)),
+        io.StringIO("\n".join(lines)),
         header=0
     )
 
