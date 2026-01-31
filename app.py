@@ -386,34 +386,40 @@ def render_tab_stock_futures(trade_date: dt.date):
         unsafe_allow_html=True,
     )
 
-    for sid, name in [("2330", "台積電"), ("2303", "聯電")]:
-        st.subheader(f"🔍 {sid} {name}")
+    rows = []  # ✅ 收集所有股票的資料列
 
+    for sid, name in [("2330", "台積電"), ("2303", "聯電")]:
         df = fetch_single_stock_daily(sid, trade_date)
 
-        # ✅ 只保留查詢交易日當天
-        df = df[df["date"] == trade_date.strftime("%Y-%m-%d")]
+        # 只保留查詢交易日當天
+        df_day = df[df["date"] == trade_date.strftime("%Y-%m-%d")]
 
-        if df.empty:
-            st.warning(f"⚠️ {sid} {trade_date} 無當日資料")
+        if df_day.empty:
             continue
 
-        row = df.iloc[0]  # ✅ 明確取當日那一筆
+        r = df_day.iloc[0]
 
-        # ✅ 重組顯示用資料（不含 date）
-        df_view = pd.DataFrame([{
+        rows.append({
             "股票代碼": sid,
             "股票名稱": name,
-            "open": row["open"],
-            "max": row["max"],
-            "min": row["min"],
-            "close": row["close"],
-            "Trading_Volume": row["Trading_Volume"],
-            "Trading_money": row["Trading_money"],
-        }])
+            "open": r["open"],
+            "max": r["max"],
+            "min": r["min"],
+            "close": r["close"],
+            "Trading_Volume": r["Trading_Volume"],
+            "Trading_money": r["Trading_money"],
+        })
 
-        # st.success(f"✅ 成功取得 {sid}（{trade_date}）資料")
-        st.dataframe(df_view, use_container_width=True)
+    if not rows:
+        st.warning("⚠️ 查詢日無任何個股資料")
+        return
+
+    df_view = pd.DataFrame(rows)
+
+    #st.success(f"✅ 成功取得 {trade_date} 個股資料（共 {len(df_view)} 檔）")
+
+    # ✅ hide_index=True → 移除最左邊 0,1,2
+    st.dataframe(df_view, use_container_width=True, hide_index=True)
 
 # =========================
 # 主流程
