@@ -193,6 +193,58 @@ def fetch_single_stock_daily(stock_id: str, trade_date: dt.date):
         end_date=trade_date.strftime("%Y-%m-%d"),
     )
 
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_top10_volume_from_twse(trade_date: dt.date) -> list[str]:
+    """
+    從 TWSE 官方 JSON 取得『上市成交量 Top10 股票代碼』
+    """
+
+    # TWSE 使用民國年
+    roc_year = trade_date.year - 1911
+    date_str = f"{roc_year}{trade_date.strftime('%m%d')}"
+
+    url = "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX20"
+    params = {
+        "date": date_str,
+        "response": "json",
+    }
+
+    try:
+        r = requests.get(url, params=params, timeout=15)
+        r.raise_for_status()
+        j = r.json()
+    except Exception as e:
+        st.error(f"❌ TWSE 成交量抓取失敗：{e}")
+        return []
+
+    if j.get("stat") != "OK":
+        return []
+
+    df = pd.DataFrame(j["data"], columns=j["fields"])
+
+    # 標準化欄位
+    df = df.rename(columns={
+        "證券代號": "stock_id",
+        "成交股數": "volume",
+    })
+
+    # 數值清洗
+    df["volume"] = (
+        df["volume"]
+        .astype(str)
+        .str.replace(",", "", regex=False)
+        .astype(int)
+    )
+
+    # 依成交量排序取前 10
+    top10_ids = (
+        df.sort_values("volume", ascending=False)
+          .head(10)["stock_id"]
+          .tolist()
+    )
+
+    return top10_ids
+
 
 def render_stock_table_html(df: pd.DataFrame):
     st.markdown(
@@ -491,10 +543,11 @@ def render_tab_option_market(trade_date: dt.date):
 # 第二模組：個股期貨（測試版）
 # =========================
 def render_tab_stock_futures(trade_date: dt.date):
-    st.markdown(
-        "<h2 class='fut-section-title'>📊 個股期貨｜測試:直接指定兩檔股票</h2>",
-        unsafe_allow_html=True,
-    )
+    # === 測試：顯示 TWSE 成交量 Top10 股票代碼 ===
+    top10_ids = fetch_top10_volume_from_twse(trade_date)
+
+    st.markdown("📊 **TWSE 成交量 Top10 股票代碼：**")
+    st.write(top10_ids)
 
     rows = []
     for sid, name in [("2330", "台積電"), ("2303", "聯電")]:
