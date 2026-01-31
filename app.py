@@ -186,6 +186,55 @@ def fetch_single_stock_daily(stock_id: str, trade_date: dt.date):
     )
     return df
 
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_top10_volume_from_twse(trade_date: dt.date) -> pd.DataFrame:
+    """
+    由 TWSE 官方取得「當日成交量前 10 名股票」
+    """
+
+    # TWSE 使用民國年
+    roc_year = trade_date.year - 1911
+    date_str = f"{roc_year}{trade_date.strftime('%m%d')}"
+
+    url = "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX20"
+    params = {
+        "date": date_str,
+        "response": "json",
+    }
+
+    r = requests.get(url, params=params, timeout=15)
+    j = r.json()
+
+    if j.get("stat") != "OK":
+        return pd.DataFrame()
+
+    df = pd.DataFrame(j["data"], columns=j["fields"])
+
+    # 欄位標準化
+    df = df.rename(columns={
+        "證券代號": "股票代碼",
+        "證券名稱": "股票名稱",
+        "成交股數": "成交量",
+        "成交金額": "成交金額",
+        "開盤價": "開盤",
+        "最高價": "最高",
+        "最低價": "最低",
+        "收盤價": "收盤",
+    })
+
+    # 數值清洗
+    for col in ["成交量", "成交金額", "開盤", "最高", "最低", "收盤"]:
+        df[col] = (
+            df[col]
+            .astype(str)
+            .str.replace(",", "", regex=False)
+            .replace("--", None)
+        )
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # 官方資料已排序，直接取前 10
+    return df.head(10)
+
 def render_stock_table_html(df: pd.DataFrame):
     """
     專門給第二模組用的 HTML 表格（可調字型大小）
@@ -431,52 +480,17 @@ def render_tab_option_market(trade_date: dt.date):
 def render_tab_stock_futures(trade_date: dt.date):
 
     st.markdown(
-        """
-        <style>
-        div[data-testid="stDataFrame"] * {
-            font-size:3.8rem !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-    
-    st.markdown(
         "<h2 class='fut-section-title'>📊 個股期貨｜前十大成交量個股</h2>",
         unsafe_allow_html=True,
     )
 
-    rows = []  # ✅ 收集所有股票的資料列
+    df_view = fetch_top10_volume_from_twse(trade_date)
 
-    for sid, name in [("2330", "台積電"), ("2303", "聯電")]:
-        df = fetch_single_stock_daily(sid, trade_date)
-
-        # 只保留查詢交易日當天
-        df_day = df[df["date"] == trade_date.strftime("%Y-%m-%d")]
-
-        if df_day.empty:
-            continue
-
-        r = df_day.iloc[0]
-
-        rows.append({
-            "股票代碼": sid,
-            "股票名稱": name,
-            "開盤": r["open"],
-            "最高": r["max"],
-            "最低": r["min"],
-            "收盤": r["close"],
-            "成交量": r["Trading_Volume"],
-            "成交金額": r["Trading_money"],
-        })
-
-    if not rows:
-        st.warning("⚠️ 查詢日無任何個股資料")
+    if df_view.empty:
+        st.warning("⚠️ 查詢日無成交量資料")
         return
 
-    df_view = pd.DataFrame(rows)
-
-    # === 顯示用格式轉換（不影響原始數據） ===
+    # === 單位轉換（沿用你原本的顯示邏輯） ===
     df_view["成交量"] = (
         df_view["成交量"] / 10_000
     ).round(0).astype(int).map(lambda x: f"{x:,} 萬")
@@ -485,7 +499,6 @@ def render_tab_stock_futures(trade_date: dt.date):
         df_view["成交金額"] / 1_000_000
     ).round(0).astype(int).map(lambda x: f"{x:,} 百萬")
 
-   # st.dataframe(df_view, use_container_width=True, hide_index=True)
     render_stock_table_html(df_view)
 
 # =========================
