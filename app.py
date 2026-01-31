@@ -189,26 +189,16 @@ def fetch_single_stock_daily(stock_id: str, trade_date: dt.date):
         end_date=trade_date.strftime("%Y-%m-%d"),
     )
     return df
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_single_stock_daily_price(stock_id: str, trade_date: dt.date):
+    df = finmind_get(
+        dataset="TaiwanStockDailyPrice",
+        data_id=stock_id,  # 👈 一定要是字串，例如 "2330"
+        start_date=trade_date.strftime("%Y-%m-%d"),
+        end_date=trade_date.strftime("%Y-%m-%d"),
+    )
+    return df
 
-
-def build_top10_with_change_pct(trade_date: dt.date):
-    df_top10, actual_date = fetch_top10_by_volume(trade_date)
-
-    if df_top10.empty:
-        return pd.DataFrame(), None
-
-    df_top10["漲跌幅(%)"] = (
-        (df_top10["close"] - df_top10["open"]) / df_top10["open"] * 100
-    ).round(2)
-
-    result = pd.DataFrame({
-        "股票代號": df_top10["stock_id"],
-        "成交量": df_top10["成交量"].astype(int),
-        "收盤價": df_top10["close"].round(2),
-        "漲跌幅(%)": df_top10["漲跌幅(%)"],
-    })
-
-    return result, actual_date
 
 # =========================
 # 第一模組：期權大盤（100% 等價封裝）
@@ -410,13 +400,26 @@ def render_tab_stock_futures(trade_date: dt.date):
         unsafe_allow_html=True,
     )
 
-    st.subheader("🔍 2230 台積電")
-    df_2330 = fetch_single_stock_daily("2330", trade_date)
-    st.dataframe(df_2330)
+    st.caption("🎯 目的：確認 FinMind 是否能成功回傳資料")
 
+    # ===== 2330 台積電 =====
+    st.subheader("🔍 2330 台積電")
+    df_2330 = fetch_single_stock_daily_price("2330", trade_date)
+
+    if df_2330.empty:
+        st.warning("⚠️ 2330 該交易日無資料（可能非交易日或 FinMind 尚未更新）")
+    else:
+        st.dataframe(df_2330, use_container_width=True)
+
+    # ===== 2303 聯電 =====
     st.subheader("🔍 2303 聯電")
-    df_2303 = fetch_single_stock_daily("2303", trade_date)
-    st.dataframe(df_2303)
+    df_2303 = fetch_single_stock_daily_price("2303", trade_date)
+
+    if df_2303.empty:
+        st.warning("⚠️ 2303 該交易日無資料")
+    else:
+        st.dataframe(df_2303, use_container_width=True)
+
 
 # =========================
 # 主流程
