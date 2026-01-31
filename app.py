@@ -71,7 +71,7 @@ button[data-baseweb="tab"][aria-selected="true"] {
 
 /* 被選中的 tab 文字 */
 button[data-baseweb="tab"][aria-selected="true"] > div {
-  color: #ffff00 !important;   /* 👈 淡黃色，可自行調 */
+  color: #ffd401 !important;   /* 👈 淡黃色，可自行調 */
   font-weight: 700;
 }
 
