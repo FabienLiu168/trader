@@ -197,6 +197,99 @@ def fetch_single_stock_daily(stock_id: str, trade_date: dt.date):
     )
 
 @st.cache_data(ttl=600, show_spinner=False)
+def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
+    """
+    使用 TWSE 官方 CSV，取得「成交量 Top10 股票」，再用 FinMind 補齊股價資料
+    """
+
+    # === 1️⃣ TWSE 官方 CSV（最穩定） ===
+    date_str = trade_date.strftime("%Y%m%d")
+    url = "https://www.twse.com.tw/exchangeReport/MI_INDEX"
+    params = {
+        "response": "csv",
+        "date": date_str,
+        "type": "ALL",
+    }
+
+    try:
+        r = requests.get(url, params=params, timeout=20)
+        r.encoding = "big5"
+    except Exception as e:
+        st.error(f"❌ TWSE CSV 下載失敗：{e}")
+        return pd.DataFrame()
+
+    # === 2️⃣ 解析 CSV（只抓「每日收盤行情」那一段） ===
+    lines = [
+        line for line in r.text.split("\n")
+        if line.startswith('"') and len(line.split('","')) >= 16
+    ]
+
+    if not lines:
+        return pd.DataFrame()
+
+    df = pd.read_csv(
+        pd.compat.StringIO("\n".join(lines)),
+        header=0
+    )
+
+    # 標準化欄位
+    df = df.rename(columns={
+        "證券代號": "stock_id",
+        "證券名稱": "stock_name",
+        "成交股數": "volume",
+        "成交金額": "amount",
+        "開盤價": "open",
+        "最高價": "high",
+        "最低價": "low",
+        "收盤價": "close",
+    })
+
+    # === 3️⃣ 數值清洗 ===
+    for col in ["volume", "amount", "open", "high", "low", "close"]:
+        df[col] = (
+            df[col]
+            .astype(str)
+            .str.replace(",", "", regex=False)
+            .replace("--", None)
+        )
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    df = df.dropna(subset=["stock_id", "volume"])
+
+    # === 4️⃣ 成交量排序，取 Top10 ===
+    top10 = (
+        df.sort_values("volume", ascending=False)
+          .head(10)
+          .copy()
+    )
+
+    if top10.empty:
+        return pd.DataFrame()
+
+    # === 5️⃣ 用 FinMind 補齊資料（保證你後面邏輯一致） ===
+    rows = []
+    for _, r in top10.iterrows():
+        df_price = fetch_single_stock_daily(r["stock_id"], trade_date)
+        df_day = df_price[df_price["date"] == trade_date.strftime("%Y-%m-%d")]
+
+        if df_day.empty:
+            continue
+
+        p = df_day.iloc[0]
+        rows.append({
+            "股票代碼": r["stock_id"],
+            "股票名稱": r["stock_name"],
+            "開盤": p["open"],
+            "最高": p["max"],
+            "最低": p["min"],
+            "收盤": p["close"],
+            "成交量": p["Trading_Volume"],
+            "成交金額": p["Trading_money"],
+        })
+
+    return pd.DataFrame(rows)
+
+@st.cache_data(ttl=600, show_spinner=False)
 def fetch_top10_volume_from_twse(trade_date: dt.date) -> list[str]:
     """
     從 TWSE 官方 JSON 取得『上市成交量 Top10 股票代碼』
@@ -554,10 +647,9 @@ def render_tab_option_market(trade_date: dt.date):
 # =========================
 def render_tab_stock_futures(trade_date: dt.date):
     # === 測試：顯示 TWSE 成交量 Top10 股票代碼 ===
-    top10_ids = fetch_top10_volume_from_twse(trade_date)
-
-    st.markdown("📊 **TWSE 成交量 Top10 股票代碼：**")
-    st.write(top10_ids)
+    df_top10 = fetch_top10_by_volume_twse_csv(trade_date)
+    st.write("📊 TWSE CSV 成交量 Top10 股票代碼：")
+    st.write(df_top10["股票代碼"].tolist())
 
     rows = []
     for sid, name in [("2330", "台積電"), ("2303", "聯電")]:
