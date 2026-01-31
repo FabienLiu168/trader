@@ -48,7 +48,7 @@ div[data-testid="stAppViewContainer"] > .main { padding-top: 3.2rem; }
 
 .bull{color:#FF3B30}
 .bear{color:#34C759}
-.neut{color:#FFFFFF}
+.neut{color:#000000}
 
 /* 選擇權區段標題 */
 .opt-section-title{
