@@ -20,7 +20,7 @@ st.markdown(
 div[data-testid="stAppViewContainer"] > .main { padding-top: 3.2rem; }
 
 .app-title{ font-size:2.5rem;font-weight:750;margin-top:-60px;text-align:center;letter-spacing:0.5px;margin-bottom:2px; }
-.app-subtitle{ font-size:1.0rem;opacity:.8;margin:.45rem 0 1.1rem;text-align:center; }
+.app-subtitle{ font-size:1.3rem;opacity:.8;margin:.45rem 0 1.1rem;text-align:center; }
 
 /* 期貨區段標題 */
 .fut-section-title{
