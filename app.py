@@ -251,7 +251,7 @@ for col in numeric_cols:
 
 
     # 官方資料本身已依成交量排序
-    return df.head(10)
+return df.head(10)
 
 
     # 數值清洗
