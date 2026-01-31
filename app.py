@@ -212,7 +212,14 @@ def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
     }
 
     try:
-        r = requests.get(url, params=params, timeout=20)
+        # r = requests.get(url, params=params, timeout=20)
+        r = requests.get(
+            url,
+            params=params,
+            timeout=20,
+            verify=False   # ✅ 關閉 SSL 驗證（關鍵）
+        )
+
         r.encoding = "big5"
     except Exception as e:
         st.error(f"❌ TWSE CSV 下載失敗：{e}")
@@ -648,8 +655,13 @@ def render_tab_option_market(trade_date: dt.date):
 def render_tab_stock_futures(trade_date: dt.date):
     # === 測試：顯示 TWSE 成交量 Top10 股票代碼 ===
     df_top10 = fetch_top10_by_volume_twse_csv(trade_date)
+
     st.write("📊 TWSE CSV 成交量 Top10 股票代碼：")
-    st.write(df_top10["股票代碼"].tolist())
+
+    if df_top10.empty:
+        st.warning("⚠️ TWSE 無法取得成交量資料")
+    else:
+        st.write(df_top10["股票代碼"].tolist())
 
     rows = []
     for sid, name in [("2330", "台積電"), ("2303", "聯電")]:
