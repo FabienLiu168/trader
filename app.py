@@ -177,8 +177,6 @@ def finmind_get(dataset, data_id, start_date, end_date):
         return pd.DataFrame()
 
     return pd.DataFrame(r.json().get("data", []))
-
-
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_top10_by_volume(trade_date: dt.date, lookback_days: int = 7):
     for i in range(lookback_days):
@@ -187,8 +185,8 @@ def fetch_top10_by_volume(trade_date: dt.date, lookback_days: int = 7):
             continue
 
         df = finmind_get(
-            dataset="TaiwanStockDaily",   # ✅ 正確來源
-            data_id="",                   # ✅ 不用 None
+            dataset="TaiwanStockDaily",
+            data_id="",   # ❗ 全市場一定要空字串
             start_date=d.strftime("%Y-%m-%d"),
             end_date=d.strftime("%Y-%m-%d"),
         )
@@ -202,8 +200,6 @@ def fetch_top10_by_volume(trade_date: dt.date, lookback_days: int = 7):
         df["Trading_Volume"] = pd.to_numeric(df["Trading_Volume"], errors="coerce")
         df["close"] = pd.to_numeric(df["close"], errors="coerce")
 
-        df = df.dropna(subset=["Trading_Volume", "close"])
-
         top10 = (
             df.sort_values("Trading_Volume", ascending=False)
               .head(10)
@@ -213,8 +209,6 @@ def fetch_top10_by_volume(trade_date: dt.date, lookback_days: int = 7):
         return top10, d
 
     return pd.DataFrame(), None
-
-
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_prev_close(stock_id: str, trade_date: dt.date, lookback_days: int = 10):
     for i in range(1, lookback_days + 1):
@@ -229,13 +223,12 @@ def fetch_prev_close(stock_id: str, trade_date: dt.date, lookback_days: int = 10
             end_date=d.strftime("%Y-%m-%d"),
         )
 
-        if not df.empty and "close" in df.columns:
+        if not df.empty:
             close = pd.to_numeric(df.iloc[0]["close"], errors="coerce")
             if pd.notna(close):
                 return close
 
     return None
-
 def build_top10_with_change_pct(trade_date: dt.date):
     df_top10, actual_date = fetch_top10_by_volume(trade_date)
 
@@ -245,7 +238,7 @@ def build_top10_with_change_pct(trade_date: dt.date):
     rows = []
 
     for _, r in df_top10.iterrows():
-        stock_id = str(r["stock_id"])
+        stock_id = r["stock_id"]
         today_close = r["close"]
         prev_close = fetch_prev_close(stock_id, actual_date)
 
@@ -469,10 +462,7 @@ def render_tab_stock_futures(trade_date: dt.date):
         return
 
     st.caption(f"📅 現貨資料日：{actual_date}")
-
     st.dataframe(df, use_container_width=True)
-
-
 
 # =========================
 # 主流程
