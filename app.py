@@ -82,7 +82,7 @@ button[data-baseweb="tab"] {
 
 /* tab 文字 */
 button[data-baseweb="tab"] > div {
-  font-size: 1.8rem;
+  font-size: 1.5rem;
   font-weight: 600;
   color: #FFFFFF !important;
 }
