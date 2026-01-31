@@ -43,7 +43,7 @@ div[data-testid="stDateInput"] label {
 div[data-testid="stDateInput"] input {
   font-size: 1.6rem;     /* 👈 日期數字大小（通常比標題再大一點） */
   font-weight: 500;
-  height: 3rem;          /* 👈 可選：讓整個框更大 */
+  height: 2rem;          /* 👈 可選：讓整個框更大 */
 }
 
 /* Tabs 模組名稱字形大小 */
