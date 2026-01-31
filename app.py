@@ -216,16 +216,16 @@ r = requests.get(
 )
 
     j = r.json()
-    except Exception:
-        return pd.DataFrame()
+except Exception:
+    return pd.DataFrame()
 
-    if j.get("stat") != "OK":
-        return pd.DataFrame()
+if j.get("stat") != "OK":
+    return pd.DataFrame()
 
-    df = pd.DataFrame(j["data"], columns=j["fields"])
+df = pd.DataFrame(j["data"], columns=j["fields"])
 
-    # 欄位標準化
-    df = df.rename(columns={
+# 欄位標準化
+df = df.rename(columns={
         "證券代號": "股票代碼",
         "證券名稱": "股票名稱",
         "成交股數": "成交量",
@@ -234,7 +234,7 @@ r = requests.get(
         "最高價": "最高",
         "最低價": "最低",
         "收盤價": "收盤",
-    })
+})
 
     # 數值清洗
     for col in ["成交量", "成交金額", "開盤", "最高", "最低", "收盤"]:
