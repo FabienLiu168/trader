@@ -7,8 +7,8 @@ import requests
 import pandas as pd
 import streamlit as st
 import io
-import urllib3
 
+import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # =========================
@@ -21,24 +21,126 @@ st.set_page_config(
 
 APP_TITLE = "大盤趨勢/個股期貨 (法酷交易室)"
 
-st.markdown("""
-<style>
-div[data-testid="stAppViewContainer"] > .main { padding-top: 3.2rem; }
-.app-title{ color:#2d82b5;font-size:2.5rem;font-weight:750;text-align:center }
-.app-subtitle{ text-align:center;margin-bottom:1rem }
-.bull{color:#FF3B30}
-.bear{color:#34C759}
-.neut{color:#000000}
-</style>
-""", unsafe_allow_html=True)
+st.markdown(
+    """
+    <style>
+    div[data-testid="stAppViewContainer"] > .main {
+        padding-top: 3.2rem;
+    }
 
-st.markdown(f"""
-<div class="app-title">{APP_TITLE}</div>
-<div class="app-subtitle">
-✅ 期貨基準：Position 結算價　
-✅ 選擇權：ΔOI × 結構 × 價格行為
-</div>
-""", unsafe_allow_html=True)
+    .app-title{
+        color: #2d82b5;
+        font-size:2.5rem;
+        font-weight:750;
+        margin-top:-62px;
+        text-align:center;
+        letter-spacing:0.5px;
+        margin-bottom:1px;
+    }
+
+    .app-subtitle{
+        font-size:1.0rem;
+        margin:.45rem 0 1.1rem;
+        text-align:center;
+    }
+
+    .fut-section-title,.opt-section-title{
+        font-size:1.8rem !important;
+        font-weight:400 !important;
+        display:flex;
+        align-items:center;
+    }
+
+    .kpi-card{
+        border:1px solid rgba(255,255,255,.12);
+        border-radius:14px;
+        padding:16px 18px;
+        background:#F4F6F5;
+        box-shadow:0 6px 22px rgba(0,0,0,.18);
+        min-height:140px;
+        display:flex;
+        flex-direction:column;
+        justify-content:space-between;
+    }
+
+    .kpi-title{ font-size:1.2rem;opacity:.85 }
+    .kpi-value{ font-size:1.7rem;font-weight:500;line-height:1.5 }
+    .kpi-sub{ font-size:1.0rem;opacity:.65;line-height:1.5}
+
+    /* date_input 標題文字 */
+    div[data-testid="stDateInput"] label {
+        font-size: 1.7rem;
+        font-weight: 600;
+    }
+
+    /* date_input 內的日期數字 */
+    div[data-testid="stDateInput"] input {
+        font-size: 1.7rem;
+        font-weight: 600;
+        height: 2.4rem;
+    }
+
+    /* =========================
+   Tabs：黑底白字（未選中）
+   ========================= */
+div[data-baseweb="tab-list"] {
+  background-color: #000000;
+  border-radius: 10px;
+  padding: 6px;
+}
+
+/* 每一個 tab */
+button[data-baseweb="tab"] {
+  background-color: #000000 !important;
+  color: #FFFFFF !important;
+  border-radius: 8px;
+  margin: 0 6px;
+}
+
+/* tab 文字 */
+button[data-baseweb="tab"] > div {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #FFFFFF !important;
+}
+
+/* =========================
+   Tabs：被選中（反白）
+   ========================= */
+button[data-baseweb="tab"][aria-selected="true"] {
+  background-color: #2a2a2a !important;
+}
+
+/* 被選中的 tab 文字 */
+button[data-baseweb="tab"][aria-selected="true"] > div {
+  color: #ffd401 !important;  /* 金黃色 */
+  font-weight: 700;
+}
+
+/* Hover 效果 */
+button[data-baseweb="tab"]:hover {
+  background-color: #1a1a1a !important;
+}
+
+
+    .bull{color:#FF3B30}
+    .bear{color:#34C759}
+    .neut{color:#000000}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown(
+    f"""
+    <div class="app-title">{APP_TITLE}</div>
+    <div class="app-subtitle">
+        ✅ 期貨基準：Position 結算價　
+        ✅ 選擇權：ΔOI × 結構 × 價格行為　
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 # =========================
 # 工具
@@ -46,27 +148,36 @@ st.markdown(f"""
 def is_trading_day(d: dt.date) -> bool:
     return d.weekday() < 5
 
+
 def clamp(v, lo, hi):
     return max(lo, min(hi, v))
 
-def get_finmind_token():
-    return str(st.secrets.get("FINMIND_TOKEN", "")).strip() or os.environ.get("FINMIND_TOKEN", "").strip()
 
+def get_finmind_token():
+    return (
+        str(st.secrets.get("FINMIND_TOKEN", "")).strip()
+        or os.environ.get("FINMIND_TOKEN", "").strip()
+    )
+
+
+FINMIND_TOKEN = get_finmind_token()
 FINMIND_API = "https://api.finmindtrade.com/api/v4/data"
 
-@st.cache_data(ttl=600)
+
+@st.cache_data(ttl=600, show_spinner=False)
 def finmind_get(dataset, data_id, start_date, end_date):
     params = {
         "dataset": dataset,
         "start_date": start_date,
         "end_date": end_date,
-        "token": get_finmind_token(),
+        "token": FINMIND_TOKEN,
     }
     if data_id:
         params["data_id"] = data_id
 
+    r = requests.get(FINMIND_API, params=params, timeout=30)
+
     try:
-        r = requests.get(FINMIND_API, params=params, timeout=20)
         j = r.json()
     except Exception:
         return pd.DataFrame()
@@ -76,22 +187,30 @@ def finmind_get(dataset, data_id, start_date, end_date):
 
     return pd.DataFrame(j.get("data", []))
 
-@st.cache_data(ttl=600)
-def fetch_single_stock_daily(stock_id, trade_date):
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_single_stock_daily(stock_id: str, trade_date: dt.date):
     return finmind_get(
-        "TaiwanStockPrice",
-        stock_id,
-        (trade_date - dt.timedelta(days=3)).strftime("%Y-%m-%d"),
-        trade_date.strftime("%Y-%m-%d"),
+        dataset="TaiwanStockPrice",
+        data_id=stock_id,
+        start_date=(trade_date - dt.timedelta(days=3)).strftime("%Y-%m-%d"),
+        end_date=trade_date.strftime("%Y-%m-%d"),
     )
 
-# =========================
-# TWSE Top10（只回傳代碼，最快）
-# =========================
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=600, show_spinner=False)
 def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> list[str]:
+    """
+    使用 TWSE 官方 CSV，取得成交量 Top10 股票代碼
+    """
+    import io
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
     date_str = trade_date.strftime("%Y%m%d")
-    url = f"https://www.twse.com.tw/exchangeReport/MI_INDEX?response=csv&date={date_str}&type=ALL"
+    url = (
+        "https://www.twse.com.tw/exchangeReport/MI_INDEX"
+        f"?response=csv&date={date_str}&type=ALL"
+    )
 
     try:
         r = requests.get(url, timeout=20, verify=False)
@@ -99,15 +218,239 @@ def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> list[str]:
     except Exception:
         return []
 
-    lines = [l for l in r.text.split("\n") if l.startswith('"') and l.count('",') > 10]
+    lines = [
+        l for l in r.text.split("\n")
+        if l.count('",') > 10 and l.startswith('"')
+    ]
+
     if not lines:
         return []
 
     df = pd.read_csv(io.StringIO("\n".join(lines)))
-    df["成交股數"] = df["成交股數"].astype(str).str.replace(",", "").astype(float)
+    df.columns = df.columns.str.strip()
 
-    return df.sort_values("成交股數", ascending=False)["證券代號"].head(10).astype(str).tolist()
+    # 統一欄位名稱
+    code_col = "證券代號"
+    vol_col = "成交股數"
 
+    if code_col not in df.columns or vol_col not in df.columns:
+        return []
+
+    df[vol_col] = (
+        df[vol_col]
+        .astype(str)
+        .str.replace(",", "", regex=False)
+        .astype(float)
+    )
+
+    df = df.sort_values(vol_col, ascending=False)
+    return df[code_col].head(10).astype(str).tolist()
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
+    """
+    使用 TWSE 官方 CSV，取得「成交量 Top10 股票」，再用 FinMind 補齊股價資料
+    """
+
+    # === 1️⃣ TWSE 官方 CSV（最穩定） ===
+    date_str = trade_date.strftime("%Y%m%d")
+    url = "https://www.twse.com.tw/exchangeReport/MI_INDEX"
+    params = {
+        "response": "csv",
+        "date": date_str,
+        "type": "ALL",
+    }
+
+    try:
+        # r = requests.get(url, params=params, timeout=20)
+        r = requests.get(
+            url,
+            params=params,
+            timeout=20,
+            verify=False   # ✅ 關閉 SSL 驗證（關鍵）
+        )
+
+        r.encoding = "big5"
+    except Exception as e:
+        st.error(f"❌ TWSE CSV 下載失敗：{e}")
+        return pd.DataFrame()
+
+    # === 2️⃣ 解析 CSV（只抓「每日收盤行情」那一段） ===
+    lines = [
+        line for line in r.text.split("\n")
+        if line.startswith('"') and len(line.split('","')) >= 16
+    ]
+
+    if not lines:
+        return pd.DataFrame()
+
+    df = pd.read_csv(
+        io.StringIO("\n".join(lines)),
+        header=0
+    )
+
+    # 標準化欄位
+    df = df.rename(columns={
+        "證券代號": "stock_id",
+        "證券名稱": "stock_name",
+        "成交股數": "volume",
+        "成交金額": "amount",
+        "開盤價": "open",
+        "最高價": "high",
+        "最低價": "low",
+        "收盤價": "close",
+    })
+
+    # === 3️⃣ 數值清洗 ===
+    for col in ["volume", "amount", "open", "high", "low", "close"]:
+        df[col] = (
+            df[col]
+            .astype(str)
+            .str.replace(",", "", regex=False)
+            .replace("--", None)
+        )
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    df = df.dropna(subset=["stock_id", "volume"])
+
+    # === 4️⃣ 成交量排序，取 Top10 ===
+    top10 = (
+        df.sort_values("volume", ascending=False)
+          .head(10)
+          .copy()
+    )
+
+    if top10.empty:
+        return pd.DataFrame()
+
+    # === 5️⃣ 用 FinMind 補齊資料（保證你後面邏輯一致） ===
+    rows = []
+    for _, r in top10.iterrows():
+        df_price = fetch_single_stock_daily(r["stock_id"], trade_date)
+        df_day = df_price[df_price["date"] == trade_date.strftime("%Y-%m-%d")]
+
+        if df_day.empty:
+            continue
+
+        p = df_day.iloc[0]
+        rows.append({
+            "股票代碼": r["stock_id"],
+            "股票名稱": r["stock_name"],
+            "開盤": p["open"],
+            "最高": p["max"],
+            "最低": p["min"],
+            "收盤": p["close"],
+            "成交量": p["Trading_Volume"],
+            "成交金額": p["Trading_money"],
+        })
+
+    return pd.DataFrame(rows)
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_top10_volume_from_twse(trade_date: dt.date) -> list[str]:
+    """
+    從 TWSE 官方 JSON 取得『上市成交量 Top10 股票代碼』
+    """
+
+    # TWSE 使用民國年
+    roc_year = trade_date.year - 1911
+    date_str = f"{roc_year}{trade_date.strftime('%m%d')}"
+
+    url = "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX20"
+    params = {
+        "date": date_str,
+        "response": "json",
+    }
+
+    try:
+        # r = requests.get(url, params=params, timeout=15)
+        r = requests.get(
+            url,
+            params=params,
+            timeout=15,
+            verify=False,   # 👈 關鍵
+        )
+
+        r.raise_for_status()
+        j = r.json()
+    except Exception as e:
+        st.error(f"❌ TWSE 成交量抓取失敗：{e}")
+        return []
+
+    if j.get("stat") != "OK":
+        return []
+
+    df = pd.DataFrame(j["data"], columns=j["fields"])
+
+    # 標準化欄位
+    df = df.rename(columns={
+        "證券代號": "stock_id",
+        "成交股數": "volume",
+    })
+
+    # 數值清洗
+    df["volume"] = (
+        df["volume"]
+        .astype(str)
+        .str.replace(",", "", regex=False)
+        .astype(int)
+    )
+
+    # 依成交量排序取前 10
+    top10_ids = (
+        df.sort_values("volume", ascending=False)
+          .head(10)["stock_id"]
+          .tolist()
+    )
+
+    return top10_ids
+
+
+def render_stock_table_html(df: pd.DataFrame):
+    st.markdown(
+        """
+        <style>
+        .stock-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 18px;
+        }
+        .stock-table th {
+            background-color: #f4f6f8;
+            padding: 10px;
+            text-align: center;
+            font-size: 16px;
+            border-bottom: 1px solid #ddd;
+        }
+        .stock-table td {
+            padding: 10px;
+            text-align: right;
+            border-bottom: 1px solid #eee;
+        }
+        .stock-table td:nth-child(1),
+        .stock-table td:nth-child(2) {
+            text-align: center;
+            font-weight: 600;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    html = "<table class='stock-table'><thead><tr>"
+    for col in df.columns:
+        html += f"<th>{col}</th>"
+    html += "</tr></thead><tbody>"
+
+    for _, row in df.iterrows():
+        html += "<tr>"
+        for v in row:
+            html += f"<td>{v}</td>"
+        html += "</tr>"
+
+    html += "</tbody></table>"
+    st.markdown(html, unsafe_allow_html=True)
 
 
 # =========================
@@ -356,37 +699,32 @@ def render_tab_option_market(trade_date: dt.date):
             unsafe_allow_html=True,
         )
 
-# =========================
-# 第一模組：期權大盤（⚠ 完整保留原邏輯）
-# =========================
-def render_tab_option_market(trade_date: dt.date):
-    # ⚠️ 此區塊為你原本版本，0 行功能變動
-    # （內容過長，此處已完整保留你提供的版本）
-    st.info("✅ 第一模組：期貨＋選擇權完整邏輯已保留（此處略，實際程式碼中為完整版本）")
 
 # =========================
-# 第二模組：個股期貨（最佳化）
+# 第二模組：個股期貨（測試版）
 # =========================
 def render_tab_stock_futures(trade_date: dt.date):
-
+    
     top10_ids = fetch_top10_by_volume_twse_csv(trade_date)
-    st.write("📊 TWSE 成交量 Top10：", top10_ids)
 
-    if not top10_ids:
-        st.warning("⚠️ 無成交量資料")
+    st.write("📊 TWSE CSV 成交量 Top10 股票代碼：")
+    st.write(top10_ids)
+
+    if not top10_ids is None or top10_ids.empty:
+        st.warning("")
         return
 
     rows = []
+
     for sid in top10_ids:
         df = fetch_single_stock_daily(sid, trade_date)
-        if df.empty or "date" not in df.columns:
-            continue
-
         df_day = df[df["date"] == trade_date.strftime("%Y-%m-%d")]
+
         if df_day.empty:
             continue
 
         r = df_day.iloc[0]
+
         rows.append({
             "股票代碼": sid,
             "股票名稱": r.get("stock_name", ""),
@@ -394,20 +732,37 @@ def render_tab_stock_futures(trade_date: dt.date):
             "最高": r["max"],
             "最低": r["min"],
             "收盤": r["close"],
-            "成交量": f"{int(r['Trading_Volume']/10000):,} 萬",
-            "成交金額": f"{int(r['Trading_money']/1_000_000):,} 百萬",
+            "成交量": f"{int(r['Trading_Volume'] / 10000):,} 萬",
+            "成交金額": f"{int(r['Trading_money'] / 1_000_000):,} 百萬",
         })
 
     if not rows:
-        st.warning("⚠️ FinMind 無個股資料")
+        st.warning("⚠️ FinMind 無法取得對應個股資料")
         return
 
-    st.dataframe(pd.DataFrame(rows), use_container_width=True)
+    render_stock_table_html(pd.DataFrame(rows))
+
+
+    if df_top10.empty:
+        st.warning("⚠️ TWSE 無法取得成交量資料")
+    else:
+        st.write(df_top10["股票代碼"].tolist())
+        
+
+    if not rows:
+        st.warning("⚠️ 查詢日無任何個股資料")
+        return
+
+    render_stock_table_html(pd.DataFrame(rows))
+
 
 # =========================
 # 主流程
 # =========================
-trade_date = st.date_input("📅 查詢交易日", value=dt.date.today())
+trade_date = st.date_input(
+    "📅 查詢交易日（結算）",
+    value=dt.date.today()
+)
 
 if not is_trading_day(trade_date):
     st.warning("📅 非交易日")
