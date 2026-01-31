@@ -474,11 +474,17 @@ def render_tab_stock_futures(trade_date: dt.date):
         st.warning("⚠️ 查詢日無任何個股資料")
         return
 
-    df_view = pd.DataFrame(rows)
+    #df_view = pd.DataFrame(rows)
 
-    #st.success(f"✅ 成功取得 {trade_date} 個股資料（共 {len(df_view)} 檔）")
+    # === 顯示用格式轉換（不影響原始數據） ===
+    df_view["成交量"] = (
+        df_view["成交量"] / 10_000
+    ).round(0).astype(int).map(lambda x: f"{x:,} 萬")
 
-    # ✅ hide_index=True → 移除最左邊 0,1,2
+    df_view["成交金額"] = (
+        df_view["成交金額"] / 1_000_000
+    ).round(0).astype(int).map(lambda x: f"{x:,} 百萬")
+
    # st.dataframe(df_view, use_container_width=True, hide_index=True)
     render_stock_table_html(df_view)
 
