@@ -42,6 +42,18 @@ div[data-testid="stAppViewContainer"] > .main { padding-top: 3.2rem; }
   justify-content:space-between;
 }
 
+/* 查詢交易日 標題 */
+div[data-testid="stDateInput"] label {
+  font-size: 1.3rem !important;
+  font-weight: 800;
+}
+
+/* 日期數值 */
+div[data-testid="stDateInput"] input {
+  font-size: 1.15rem !important;
+  font-weight: 600;
+}
+
 .kpi-title{ font-size:1.2rem;opacity:.85 }
 .kpi-value{ font-size:1.7rem;font-weight:500;line-height:1.5 }
 .kpi-sub{ font-size:1.0rem;opacity:.65;line-height:1.5}
@@ -122,17 +134,6 @@ def finmind_get(dataset, data_id, start_date, end_date):
 # 使用者輸入：交易日
 # =========================
 trade_date = st.date_input("📅 查詢交易日（結算）", value=dt.date.today())
-/* 查詢交易日 標題 */
-div[data-testid="stDateInput"] label {
-  font-size: 1.3rem !important;
-  font-weight: 800;
-}
-
-/* 日期數值 */
-div[data-testid="stDateInput"] input {
-  font-size: 1.15rem !important;
-  font-weight: 600;
-}
 
 if not is_trading_day(trade_date):
     st.warning("📅 非交易日（週六 / 週日）不顯示任何資料")
