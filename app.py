@@ -66,12 +66,12 @@ button[data-baseweb="tab"] > div {
 
 /* 被選中的 tab */
 button[data-baseweb="tab"][aria-selected="true"] {
-  background-color: #FFFFFF !important;
+  background-color: #aba6a8 !important;
 }
 
 /* 被選中的 tab 文字 */
 button[data-baseweb="tab"][aria-selected="true"] > div {
-  color: #F5C542 !important;   /* 👈 淡黃色，可自行調 */
+  color: #ffff00 !important;   /* 👈 淡黃色，可自行調 */
   font-weight: 700;
 }
 
