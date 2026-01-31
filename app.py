@@ -362,11 +362,66 @@ def render_tab_option_market(trade_date: dt.date):
         )
 
 # =========================
-# 第二模組（暫留）
+# 第二模組：個股期貨（現貨成交量 Top10）
 # =========================
 def render_tab_stock_futures(trade_date: dt.date):
-    st.markdown("<h2 class='fut-section-title'>📊 個股期貨｜現貨成交量 Top10</h2>", unsafe_allow_html=True)
-    st.info("⚠️ 尚未載入資料")
+
+    st.markdown(
+        "<h2 class='fut-section-title'>📊 個股期貨｜現貨成交量 Top10</h2>",
+        unsafe_allow_html=True,
+    )
+
+    @st.cache_data(ttl=600, show_spinner=False)
+    def fetch_stock_volume_top10(trade_date: dt.date):
+        if not FINMIND_TOKEN:
+            return pd.DataFrame()
+
+        df = finmind_get(
+            dataset="TaiwanStockDaily",
+            data_id="",
+            start_date=trade_date.strftime("%Y-%m-%d"),
+            end_date=trade_date.strftime("%Y-%m-%d"),
+        )
+
+        if df.empty:
+            return df
+
+        # 欄位轉數值（保險）
+        for col in ["Trading_Volume", "Trading_money", "open", "close"]:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        # 計算漲跌%
+        df["chg_pct"] = (df["close"] - df["open"]) / df["open"] * 100
+
+        # 依成交量排序取前 10
+        df = df.sort_values("Trading_Volume", ascending=False).head(10)
+
+        return df
+
+    df = fetch_stock_volume_top10(trade_date)
+
+    if df.empty:
+        st.info("⚠️ 尚無法取得當日現貨成交量資料")
+        st.dataframe(
+            pd.DataFrame(columns=["標的名稱", "總成交量", "交易總金額", "收盤價（漲跌%）"]),
+            use_container_width=True,
+        )
+        return
+
+    show_df = pd.DataFrame({
+        "標的名稱": df["stock_id"],
+        "總成交量": df["Trading_Volume"],
+        "交易總金額": df["Trading_money"],
+        "收盤價（漲跌%）": df.apply(
+            lambda r: f"{r['close']:.2f} ({r['chg_pct']:+.2f}%)",
+            axis=1
+        ),
+    })
+
+    st.dataframe(show_df, use_container_width=True)
+    st.caption("📌 資料來源：FinMind 台股公開資料")
+
 
 # =========================
 # 主流程
