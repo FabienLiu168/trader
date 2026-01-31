@@ -29,6 +29,12 @@ div[data-testid="stAppViewContainer"] > .main { padding-top: 3.2rem; }
   align-items:center;
 }
 
+/* Tabs 標題字形大小 */
+button[data-baseweb="tab"] > div {
+  font-size: 1.5rem;   /* 👈 你要的大小，例如 1.1 / 1.3 / 1.5 */
+  font-weight: 600;     /* 可選：加粗 */
+}
+
 .kpi-card{
   border:1px solid rgba(255,255,255,.12);
   border-radius:14px;
