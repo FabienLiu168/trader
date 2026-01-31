@@ -63,6 +63,49 @@ st.markdown(
     .kpi-value{ font-size:1.7rem;font-weight:500;line-height:1.5 }
     .kpi-sub{ font-size:1.0rem;opacity:.65;line-height:1.5}
 
+    /* =========================
+   Tabs：黑底白字（未選中）
+   ========================= */
+div[data-baseweb="tab-list"] {
+  background-color: #000000;
+  border-radius: 10px;
+  padding: 6px;
+}
+
+/* 每一個 tab */
+button[data-baseweb="tab"] {
+  background-color: #000000 !important;
+  color: #FFFFFF !important;
+  border-radius: 8px;
+  margin: 0 6px;
+}
+
+/* tab 文字 */
+button[data-baseweb="tab"] > div {
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: #FFFFFF !important;
+}
+
+/* =========================
+   Tabs：被選中（反白）
+   ========================= */
+button[data-baseweb="tab"][aria-selected="true"] {
+  background-color: #2a2a2a !important;
+}
+
+/* 被選中的 tab 文字 */
+button[data-baseweb="tab"][aria-selected="true"] > div {
+  color: #ffd401 !important;  /* 金黃色 */
+  font-weight: 700;
+}
+
+/* Hover 效果 */
+button[data-baseweb="tab"]:hover {
+  background-color: #1a1a1a !important;
+}
+
+
     .bull{color:#FF3B30}
     .bear{color:#34C759}
     .neut{color:#000000}
