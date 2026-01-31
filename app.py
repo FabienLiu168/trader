@@ -189,60 +189,23 @@ def fetch_single_stock_daily(stock_id: str, trade_date: dt.date):
     return df
 
 @st.cache_data(ttl=600, show_spinner=False)
-def fetch_top10_volume_from_twse(trade_date: dt.date) -> pd.DataFrame:
-    """
-    由 TWSE 官方取得「當日成交量前 10 名股票」
-    """
-
-    roc_year = trade_date.year - 1911
-    date_str = f"{roc_year}{trade_date.strftime('%m%d')}"
-
-    url = "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX20"
-    params = {
-        "date": date_str,
-        "response": "json",
-    }
-
-    r = requests.get(
-        url,
-        params=params,
-        timeout=15,
-        verify=False,  # ⭐ 關鍵
-        headers={
-            "User-Agent": "Mozilla/5.0"
-        }
+def fetch_top10_volume_finmind(trade_date: dt.date) -> pd.DataFrame:
+    df = finmind_get(
+        dataset="TaiwanStockTradingDailyReport",
+        data_id=None,
+        start_date=trade_date.strftime("%Y-%m-%d"),
+        end_date=trade_date.strftime("%Y-%m-%d"),
     )
 
-    j = r.json()
+    if df.empty:
+        return df
 
-    if j.get("stat") != "OK":
-        return pd.DataFrame()
+    df["Trading_Volume"] = pd.to_numeric(df["Trading_Volume"], errors="coerce")
+    df = df.dropna(subset=["Trading_Volume"])
 
-    df = pd.DataFrame(j["data"], columns=j["fields"])
+    df = df.sort_values("Trading_Volume", ascending=False).head(10)
 
-    df = df.rename(columns={
-        "證券代號": "股票代碼",
-        "證券名稱": "股票名稱",
-        "成交股數": "成交量",
-        "成交金額": "成交金額",
-        "開盤價": "開盤",
-        "最高價": "最高",
-        "最低價": "最低",
-        "收盤價": "收盤",
-    })
-
-    for col in ["成交量", "成交金額", "開盤", "最高", "最低", "收盤"]:
-        if col not in df.columns:
-            continue
-        df[col] = (
-            df[col]
-            .astype(str)
-            .str.replace(",", "", regex=False)
-            .replace("--", None)
-        )
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-
-    return df.head(10)
+    return df
 
 
     # 數值清洗
@@ -507,7 +470,8 @@ def render_tab_stock_futures(trade_date: dt.date):
         unsafe_allow_html=True,
     )
 
-    df_view = fetch_top10_volume_from_twse(trade_date)
+    df_view = fetch_top10_volume_finmind(trade_date)
+
 
     if df_view.empty:
         st.warning("⚠️ 查詢日無成交量資料")
