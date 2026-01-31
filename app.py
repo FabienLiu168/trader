@@ -82,7 +82,7 @@ button[data-baseweb="tab"] {
 
 /* tab 文字 */
 button[data-baseweb="tab"] > div {
-  font-size: 1.3rem;
+  font-size: 1.8rem;
   font-weight: 600;
   color: #FFFFFF !important;
 }
@@ -479,7 +479,7 @@ def render_tab_option_market(trade_date: dt.date):
 # =========================
 def render_tab_stock_futures(trade_date: dt.date):
     st.markdown(
-        "<h2 class='fut-section-title'>📊 個股期貨｜測試資料</h2>",
+        "<h2 class='fut-section-title'>📊 個股期貨｜測試:直接指定兩檔股票</h2>",
         unsafe_allow_html=True,
     )
 
