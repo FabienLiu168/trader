@@ -7,6 +7,9 @@ import requests
 import pandas as pd
 import streamlit as st
 
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 # =========================
 # 基本設定
 # =========================
@@ -210,7 +213,14 @@ def fetch_top10_volume_from_twse(trade_date: dt.date) -> list[str]:
     }
 
     try:
-        r = requests.get(url, params=params, timeout=15)
+        # r = requests.get(url, params=params, timeout=15)
+        r = requests.get(
+            url,
+            params=params,
+            timeout=15,
+            verify=False,   # 👈 關鍵
+        )
+
         r.raise_for_status()
         j = r.json()
     except Exception as e:
