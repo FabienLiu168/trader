@@ -156,19 +156,23 @@ FINMIND_API = "https://api.finmindtrade.com/api/v4/data"
 def finmind_get(dataset, data_id, start_date, end_date):
     if not FINMIND_TOKEN:
         return pd.DataFrame()
-    r = requests.get(
-        FINMIND_API,
-        params=dict(
-            dataset=dataset,
-            data_id=data_id,
-            start_date=start_date,
-            end_date=end_date,
-            token=FINMIND_TOKEN,
-        ),
-        timeout=30,
+
+    params = dict(
+        dataset=dataset,
+        start_date=start_date,
+        end_date=end_date,
+        token=FINMIND_TOKEN,
     )
+
+    # 🔥 關鍵修正：只有在 data_id 有值時才傳
+    if data_id:
+        params["data_id"] = data_id
+
+    r = requests.get(FINMIND_API, params=params, timeout=30)
+
     if r.status_code != 200:
         return pd.DataFrame()
+
     return pd.DataFrame(r.json().get("data", []))
 
 # =========================
