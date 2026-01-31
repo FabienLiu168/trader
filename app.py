@@ -382,6 +382,17 @@ def render_tab_option_market(trade_date: dt.date):
 def render_tab_stock_futures(trade_date: dt.date):
 
     st.markdown(
+        """
+        <style>
+        div[data-testid="stDataFrame"] * {
+            font-size: 18px !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    
+    st.markdown(
         "<h2 class='fut-section-title'>📊 個股期貨｜單一股票資料驗證</h2>",
         unsafe_allow_html=True,
     )
