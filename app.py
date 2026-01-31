@@ -396,9 +396,7 @@ def render_tab_stock_futures(trade_date: dt.date):
         if df.empty:
             st.warning(f"⚠️ {sid} {trade_date} 無當日資料")
             continue
-        
         df = df.sort_values("date")
-
 
     # ✅ 重組成你要的欄位格式
     df_view = pd.DataFrame([{
@@ -411,7 +409,8 @@ def render_tab_stock_futures(trade_date: dt.date):
         "Trading_Volume": df_day.iloc[0]["Trading_Volume"],
         "Trading_money": df_day.iloc[0]["Trading_money"],
     }])
-
+        st.success(f"✅ 成功取得 {sid}（{trade_date}）資料")
+        st.dataframe(df_view, use_container_width=True)
 # =========================
 # 主流程
 # =========================
