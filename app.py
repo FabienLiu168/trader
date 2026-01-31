@@ -163,11 +163,7 @@ def finmind_get(dataset, data_id, start_date, end_date):
     if data_id:
         params["data_id"] = data_id
 
-    r = requests.get(
-        "https://api.finmindtrade.com/api/v4/data",
-        params=params,
-        timeout=30,
-    )
+    r = requests.get(FINMIND_API, params=params, timeout=30)
 
     try:
         j = r.json()
@@ -176,25 +172,19 @@ def finmind_get(dataset, data_id, start_date, end_date):
         st.text(r.text)
         return pd.DataFrame()
 
-    # 🔍 Debug（確認用，之後可刪）
+    # 🧪 debug 用（之後可刪）
     st.write("📦 FinMind Raw Response", j)
 
-    # ✅ 正確的成功判斷
+    # ✅ 正確成功判斷
     if j.get("status") != 200:
-        st.error(f"❌ FinMind 回傳失敗：{j.get('msg')}")
+        st.error(f"❌ FinMind API Error：{j.get('msg')}")
         return pd.DataFrame()
 
-    # ✅ 只有成功才回傳 data
-    return pd.DataFrame(j.get("data", []))
+    data = j.get("data", [])
+    if not data:
+        return pd.DataFrame()
 
-
-    # 🔥 關鍵：直接把 FinMind 回應攤開
-    st.write("📦 FinMind Raw Response", j)
-
-    if j.get("status") != 200:
-        st.error(f"❌ FinMind 回傳失敗：{j.get('msg')}")
-    return pd.DataFrame()
-    return pd.DataFrame(j.get("data", []))
+    return pd.DataFrame(data)
 
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_single_stock_daily(stock_id: str, trade_date: dt.date):
