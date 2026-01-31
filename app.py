@@ -187,19 +187,29 @@ def fetch_top10_by_volume(trade_date: dt.date, lookback_days: int = 7):
             continue
 
         df = finmind_get(
-            dataset="TaiwanStockDailyPrice",
-            data_id=None,
+            dataset="TaiwanStockDaily",   # ✅ 正確來源
+            data_id="",                   # ✅ 不用 None
             start_date=d.strftime("%Y-%m-%d"),
             end_date=d.strftime("%Y-%m-%d"),
         )
 
-        if df.empty or "Trading_Volume" not in df.columns:
+        if df.empty:
+            continue
+
+        if "Trading_Volume" not in df.columns:
             continue
 
         df["Trading_Volume"] = pd.to_numeric(df["Trading_Volume"], errors="coerce")
         df["close"] = pd.to_numeric(df["close"], errors="coerce")
 
-        top10 = df.sort_values("Trading_Volume", ascending=False).head(10).copy()
+        df = df.dropna(subset=["Trading_Volume", "close"])
+
+        top10 = (
+            df.sort_values("Trading_Volume", ascending=False)
+              .head(10)
+              .copy()
+        )
+
         return top10, d
 
     return pd.DataFrame(), None
@@ -213,7 +223,7 @@ def fetch_prev_close(stock_id: str, trade_date: dt.date, lookback_days: int = 10
             continue
 
         df = finmind_get(
-            dataset="TaiwanStockDailyPrice",
+            dataset="TaiwanStockDaily",
             data_id=stock_id,
             start_date=d.strftime("%Y-%m-%d"),
             end_date=d.strftime("%Y-%m-%d"),
@@ -226,34 +236,31 @@ def fetch_prev_close(stock_id: str, trade_date: dt.date, lookback_days: int = 10
 
     return None
 
-
 def build_top10_with_change_pct(trade_date: dt.date):
     df_top10, actual_date = fetch_top10_by_volume(trade_date)
 
     if df_top10.empty:
         return pd.DataFrame(), None
 
-    records = []
+    rows = []
 
     for _, r in df_top10.iterrows():
         stock_id = str(r["stock_id"])
         today_close = r["close"]
         prev_close = fetch_prev_close(stock_id, actual_date)
 
+        chg_pct = None
         if prev_close and prev_close != 0:
             chg_pct = (today_close - prev_close) / prev_close * 100
-        else:
-            chg_pct = None
 
-        records.append({
+        rows.append({
             "股票代號": stock_id,
             "成交量": int(r["Trading_Volume"]),
             "收盤價": round(today_close, 2),
             "漲跌幅(%)": round(chg_pct, 2) if chg_pct is not None else None,
         })
 
-    return pd.DataFrame(records), actual_date
-
+    return pd.DataFrame(rows), actual_date
 
 # =========================
 # 第一模組：期權大盤（100% 等價封裝）
