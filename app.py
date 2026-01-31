@@ -431,9 +431,6 @@ if not is_trading_day(trade_date):
 
 tab1, tab2 = st.tabs(["📈 期權大盤", "📊 個股期貨"])
 
-st.subheader("🧪 FinMind 最小測試")
-st.dataframe(df_test)
-
 with tab1:
     render_tab_option_market(trade_date)
 
