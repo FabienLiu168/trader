@@ -246,36 +246,6 @@ def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> list[str]:
     df = df.sort_values(vol_col, ascending=False)
     return df[code_col].head(10).astype(str).tolist()
 
-
-@st.cache_data(ttl=600, show_spinner=False)
-def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
-    """
-    使用 TWSE 官方 CSV，取得「成交量 Top10 股票」，再用 FinMind 補齊股價資料
-    """
-
-    # === 1️⃣ TWSE 官方 CSV（最穩定） ===
-    date_str = trade_date.strftime("%Y%m%d")
-    url = "https://www.twse.com.tw/exchangeReport/MI_INDEX"
-    params = {
-        "response": "csv",
-        "date": date_str,
-        "type": "ALL",
-    }
-
-    try:
-        # r = requests.get(url, params=params, timeout=20)
-        r = requests.get(
-            url,
-            params=params,
-            timeout=20,
-            verify=False   # ✅ 關閉 SSL 驗證（關鍵）
-        )
-
-        r.encoding = "big5"
-    except Exception as e:
-        st.error(f"❌ TWSE CSV 下載失敗：{e}")
-        return pd.DataFrame()
-
     # === 2️⃣ 解析 CSV（只抓「每日收盤行情」那一段） ===
     lines = [
         line for line in r.text.split("\n")
@@ -709,7 +679,7 @@ def render_tab_stock_futures(trade_date: dt.date):
 
     st.write("📊 TWSE CSV 成交量 Top10 股票代碼：")
     st.write(top10_ids)
-    if top10_ids.empty:
+    if not top10_ids:
         st.warning("⚠️ TWSE 無法取得成交量排行")
         return
         
