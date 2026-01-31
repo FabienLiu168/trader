@@ -167,21 +167,14 @@ def finmind_get(dataset, data_id, start_date, end_date):
 
     try:
         j = r.json()
-    except Exception as e:
-        st.error(f"❌ JSON 解析失敗：{e}")
-        st.text(r.text)
+    except Exception:
         return pd.DataFrame()
 
-    # ✅ 正確成功判斷
     if j.get("status") != 200:
-        st.error(f"❌ FinMind API Error：{j.get('msg')}")
         return pd.DataFrame()
 
-    data = j.get("data", [])
-    if not data:
-        return pd.DataFrame()
+    return pd.DataFrame(j.get("data", []))
 
-    return pd.DataFrame(data)
 
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_single_stock_daily(stock_id: str, trade_date: dt.date):
