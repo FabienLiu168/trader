@@ -717,30 +717,36 @@ def render_tab_stock_futures(trade_date: dt.date):
     rows = []
 
     for sid in top10_ids:
-        df = fetch_single_stock_daily(sid, trade_date)
-        
-        # ✅ 關鍵防呆 1：df 為空
-        if df_day.empty:
-            continue
-        # ✅ 關鍵防呆 2：沒有 date 欄位
-        if "date" not in df.columns:
-            continue
-        df_day = df[df["date"] == trade_date.strftime("%Y-%m-%d")]
-        
-        if df_day.empty:
-            continue
-        
-        r = df_day.iloc[0]
-        rows.append({
-            "股票代碼": sid,
-            "股票名稱": r.get("stock_name", ""),
-            "開盤": r["open"],
-            "最高": r["max"],
-            "最低": r["min"],
-            "收盤": r["close"],
-            "成交量": f"{int(r['Trading_Volume'] / 10000):,} 萬",
-            "成交金額": f"{int(r['Trading_money'] / 1_000_000):,} 百萬",
-        })
+    df = fetch_single_stock_daily(sid, trade_date)
+
+    # 1️⃣ FinMind 回傳空表
+    if df.empty:
+        continue
+
+    # 2️⃣ 沒有 date 欄位
+    if "date" not in df.columns:
+        continue
+
+    # 3️⃣ 只在這裡才建立 df_day
+    df_day = df[df["date"] == trade_date.strftime("%Y-%m-%d")]
+
+    # 4️⃣ df_day 一定存在，才檢查 empty
+    if df_day.empty:
+        continue
+
+    r = df_day.iloc[0]
+
+    rows.append({
+        "股票代碼": sid,
+        "股票名稱": r.get("stock_name", ""),
+        "開盤": r["open"],
+        "最高": r["max"],
+        "最低": r["min"],
+        "收盤": r["close"],
+        "成交量": f"{int(r['Trading_Volume'] / 10000):,} 萬",
+        "成交金額": f"{int(r['Trading_money'] / 1_000_000):,} 百萬",
+    })
+
         
     # 3️⃣ ⭐ 只在「這裡」判斷 rows
     if not rows:
