@@ -711,7 +711,7 @@ def render_tab_stock_futures(trade_date: dt.date):
     st.write(top10_ids)
 
     if not top10_ids is None or top10_ids.empty:
-        st.warning("⚠️ ")
+        st.warning("")
         return
 
     rows = []
