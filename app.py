@@ -163,7 +163,11 @@ def finmind_get(dataset, data_id, start_date, end_date):
     if data_id:
         params["data_id"] = data_id
 
-    r = requests.get("https://api.finmindtrade.com/api/v4/data", params=params, timeout=30)
+    r = requests.get(
+        "https://api.finmindtrade.com/api/v4/data",
+        params=params,
+        timeout=30,
+    )
 
     try:
         j = r.json()
@@ -171,6 +175,18 @@ def finmind_get(dataset, data_id, start_date, end_date):
         st.error(f"❌ JSON 解析失敗：{e}")
         st.text(r.text)
         return pd.DataFrame()
+
+    # 🔍 Debug（確認用，之後可刪）
+    st.write("📦 FinMind Raw Response", j)
+
+    # ✅ 正確的成功判斷
+    if j.get("status") != 200:
+        st.error(f"❌ FinMind 回傳失敗：{j.get('msg')}")
+        return pd.DataFrame()
+
+    # ✅ 只有成功才回傳 data
+    return pd.DataFrame(j.get("data", []))
+
 
     # 🔥 關鍵：直接把 FinMind 回應攤開
     st.write("📦 FinMind Raw Response", j)
