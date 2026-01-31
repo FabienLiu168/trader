@@ -172,9 +172,6 @@ def finmind_get(dataset, data_id, start_date, end_date):
         st.text(r.text)
         return pd.DataFrame()
 
-    # 🧪 debug 用（之後可刪）
-    st.write("📦 FinMind Raw Response", j)
-
     # ✅ 正確成功判斷
     if j.get("status") != 200:
         st.error(f"❌ FinMind API Error：{j.get('msg')}")
