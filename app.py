@@ -193,12 +193,12 @@ def fetch_top10_volume_from_twse(trade_date: dt.date) -> pd.DataFrame:
     """
 
     # TWSE 使用民國年
-    roc_year = trade_date.year - 1911
-    date_str = f"{roc_year}{trade_date.strftime('%m%d')}"
+    date_str = trade_date.strftime("%Y%m%d")
 
     url = "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX20"
     params = {
         "date": date_str,
+        "type": "ALL",        # ✅ 必須要
         "response": "json",
     }
 
