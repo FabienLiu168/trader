@@ -175,10 +175,9 @@ def finmind_get(dataset, data_id, start_date, end_date):
     # 🔥 關鍵：直接把 FinMind 回應攤開
     st.write("📦 FinMind Raw Response", j)
 
-    if not j.get("success", False):
+    if j.get("status") != 200:
         st.error(f"❌ FinMind 回傳失敗：{j.get('msg')}")
-        return pd.DataFrame()
-
+    return pd.DataFrame()
     return pd.DataFrame(j.get("data", []))
 
 @st.cache_data(ttl=600, show_spinner=False)
