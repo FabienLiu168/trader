@@ -175,17 +175,6 @@ def finmind_get(dataset, data_id, start_date, end_date):
 
     return pd.DataFrame(j.get("data", []))
 
-
-@st.cache_data(ttl=600, show_spinner=False)
-def fetch_single_stock_daily(stock_id: str, trade_date: dt.date):
-    df = finmind_get(
-        dataset="TaiwanStockPrice",   # ✅ 正確
-        data_id=stock_id,
-        start_date=(trade_date - dt.timedelta(days=3)).strftime("%Y-%m-%d"),
-        end_date=trade_date.strftime("%Y-%m-%d"),
-    )
-    return df
-
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_top10_by_volume(trade_date: dt.date) -> pd.DataFrame:
     df = finmind_get(
