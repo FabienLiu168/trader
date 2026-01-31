@@ -462,12 +462,12 @@ def render_tab_stock_futures(trade_date: dt.date):
         rows.append({
             "股票代碼": sid,
             "股票名稱": name,
-            "open": r["open"],
-            "max": r["max"],
-            "min": r["min"],
-            "close": r["close"],
-            "Trading_Volume": r["Trading_Volume"],
-            "Trading_money": r["Trading_money"],
+            "開盤": r["open"],
+            "最高": r["max"],
+            "最低": r["min"],
+            "收盤": r["close"],
+            "成交量": r["Trading_Volume"],
+            "成交金額": r["Trading_money"],
         })
 
     if not rows:
