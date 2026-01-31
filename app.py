@@ -6,6 +6,8 @@ import datetime as dt
 import requests
 import pandas as pd
 import streamlit as st
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # =========================
 # 基本設定
@@ -192,7 +194,6 @@ def fetch_top10_volume_from_twse(trade_date: dt.date) -> pd.DataFrame:
     由 TWSE 官方取得「當日成交量前 10 名股票」
     """
 
-    # TWSE 使用民國年
     roc_year = trade_date.year - 1911
     date_str = f"{roc_year}{trade_date.strftime('%m%d')}"
 
@@ -202,7 +203,16 @@ def fetch_top10_volume_from_twse(trade_date: dt.date) -> pd.DataFrame:
         "response": "json",
     }
 
-    r = requests.get(url, params=params, timeout=15)
+    r = requests.get(
+        url,
+        params=params,
+        timeout=15,
+        verify=False,  # ⭐ 關鍵
+        headers={
+            "User-Agent": "Mozilla/5.0"
+        }
+    )
+
     j = r.json()
 
     if j.get("stat") != "OK":
@@ -210,7 +220,6 @@ def fetch_top10_volume_from_twse(trade_date: dt.date) -> pd.DataFrame:
 
     df = pd.DataFrame(j["data"], columns=j["fields"])
 
-    # 欄位標準化
     df = df.rename(columns={
         "證券代號": "股票代碼",
         "證券名稱": "股票名稱",
@@ -222,7 +231,6 @@ def fetch_top10_volume_from_twse(trade_date: dt.date) -> pd.DataFrame:
         "收盤價": "收盤",
     })
 
-    # ✅ 注意：for 跟 df 是「同一層縮排」
     for col in ["成交量", "成交金額", "開盤", "最高", "最低", "收盤"]:
         if col not in df.columns:
             continue
@@ -235,6 +243,7 @@ def fetch_top10_volume_from_twse(trade_date: dt.date) -> pd.DataFrame:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
     return df.head(10)
+
 
     # 數值清洗
     for col in ["成交量", "成交金額", "開盤", "最高", "最低", "收盤"]:
