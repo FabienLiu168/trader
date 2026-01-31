@@ -422,7 +422,7 @@ else:
             f"<div class='kpi-sub'>Put 最大 OI</div></div>",
             unsafe_allow_html=True,
         )
-st.info("✅ 第一模組已以『最小變動』方式完成可維護包裝")
+#st.info("✅ 第一模組已以『最小變動』方式完成可維護包裝")
 
 # =========================
 # 第二模組：個股期貨（維持你原本實作）
