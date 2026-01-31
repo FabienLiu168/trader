@@ -188,24 +188,133 @@ def render_stock_table_html(df: pd.DataFrame):
 # 第一模組：期權大盤
 # =========================
 def render_tab_option_market(trade_date: dt.date):
-    st.markdown(
-        "<h2 class='fut-section-title'>📈 台指期貨｜趨勢方向</h2>",
-        unsafe_allow_html=True,
-    )
 
-    df = finmind_get(
-        "TaiwanFuturesDaily",
-        "TX",
-        trade_date.strftime("%Y-%m-%d"),
-        (trade_date + dt.timedelta(days=3)).strftime("%Y-%m-%d"),
-    )
+    @st.cache_data(ttl=600, show_spinner=False)
+    def fetch_position_for_trade_date(trade_date: dt.date):
+        df = finmind_get(
+            "TaiwanFuturesDaily",
+            "TX",
+            trade_date.strftime("%Y-%m-%d"),
+            (trade_date + dt.timedelta(days=3)).strftime("%Y-%m-%d"),
+        )
+        if df.empty:
+            return df
+        df = df[df["trading_session"].astype(str) == "position"].copy()
+        df["trade_date"] = trade_date
+        return df
 
-    if df.empty:
+    def pick_main_contract_position(df, trade_date):
+        x = df.copy()
+        x["ym"] = pd.to_numeric(x["contract_date"], errors="coerce")
+        target = trade_date.year * 100 + trade_date.month
+        cand = x[x["ym"] >= target]
+        return cand.sort_values("ym").iloc[0] if not cand.empty else x.sort_values("ym").iloc[-1]
+
+    def calc_ai_scores(main_row, df_all):
+        open_ = float(main_row.get("open", 0) or 0)
+        settle = main_row.get("settlement_price")
+        close = main_row.get("close")
+        final_close = float(settle) if settle not in (None, "", 0) else float(close or 0)
+
+        high_ = float(main_row.get("max", 0) or 0)
+        low_ = float(main_row.get("min", 0) or 0)
+        spread = final_close - open_
+        day_range = abs(high_ - low_)
+
+        vol = float(pd.to_numeric(main_row.get("volume", 0), errors="coerce") or 0)
+        vol_med = max(float(pd.to_numeric(df_all["volume"], errors="coerce").median() or 1), 1)
+
+        score = (
+            clamp(spread / 100.0, -3, 3) * 0.7 +
+            clamp((vol / vol_med - 1) * 2, -2, 2) * 0.3
+        )
+
+        direction = "偏多" if score > 0.8 else "偏空" if score < -0.8 else "中性"
+
+        return {
+            "direction_text": direction,
+            "tx_last_price": final_close,
+            "day_range": day_range,
+            "risk_score": int(clamp(day_range / 3, 0, 100)),
+            "consistency_pct": int(abs(score) / 3 * 100),
+        }
+
+    def get_prev_trading_close(trade_date: dt.date, lookback_days=7):
+        for i in range(1, lookback_days + 1):
+            d = trade_date - dt.timedelta(days=i)
+            if d.weekday() >= 5:
+                continue
+            df = fetch_position_for_trade_date(d)
+            if not df.empty:
+                row = pick_main_contract_position(df, d)
+                settle = row.get("settlement_price")
+                close = row.get("close")
+                return float(settle) if settle not in (None, "", 0) else float(close or 0)
+        return None
+
+    # ===== 取資料 =====
+    df_day_all = fetch_position_for_trade_date(trade_date)
+    if df_day_all.empty:
         st.error("❌ 無期貨結算資料")
         return
 
-    row = df.iloc[0]
-    st.metric("期貨收盤價", f"{float(row.get('close', 0)):.0f}")
+    main_row = pick_main_contract_position(df_day_all, trade_date)
+    ai = calc_ai_scores(main_row, df_day_all)
+
+    fut_price = ai["tx_last_price"]
+    prev_close = get_prev_trading_close(trade_date)
+
+    price_diff = pct_diff = None
+    price_color = "#000000"
+    if prev_close:
+        price_diff = fut_price - prev_close
+        pct_diff = price_diff / prev_close * 100
+        price_color = "#FF3B30" if price_diff > 0 else "#34C759" if price_diff < 0 else "#000000"
+
+    # ===== UI =====
+    st.markdown("<h2 class='fut-section-title'>📈 台指期貨｜趨勢方向</h2>", unsafe_allow_html=True)
+
+    mood = ai["direction_text"]
+    cls = "bull" if mood == "偏多" else "bear" if mood == "偏空" else "neut"
+
+    c1, c2, c3, c4, c5 = st.columns([1.6, 1.6, 1.2, 1.2, 1.4])
+
+    with c1:
+        st.markdown(
+            f"<div class='kpi-card'><div class='kpi-title'>方向</div>"
+            f"<div class='kpi-value {cls}'>{mood}</div></div>",
+            unsafe_allow_html=True,
+        )
+
+    with c2:
+        st.markdown(
+            f"<div class='kpi-card'><div class='kpi-title'>收盤價</div>"
+            f"<div class='kpi-value' style='color:{price_color}'>{fut_price:.0f}"
+            f"<span style='font-size:1.05rem'> ({price_diff:+.0f}，{pct_diff:+.1f}%)</span>"
+            f"</div></div>",
+            unsafe_allow_html=True,
+        )
+
+    with c3:
+        st.markdown(
+            f"<div class='kpi-card'><div class='kpi-title'>一致性</div>"
+            f"<div class='kpi-value'>{ai['consistency_pct']}%</div></div>",
+            unsafe_allow_html=True,
+        )
+
+    with c4:
+        st.markdown(
+            f"<div class='kpi-card'><div class='kpi-title'>風險</div>"
+            f"<div class='kpi-value'>{ai['risk_score']}/100</div></div>",
+            unsafe_allow_html=True,
+        )
+
+    with c5:
+        st.markdown(
+            f"<div class='kpi-card'><div class='kpi-title'>日震幅</div>"
+            f"<div class='kpi-value'>{ai['day_range']:.0f}</div></div>",
+            unsafe_allow_html=True,
+        )
 
 
 # =========================
