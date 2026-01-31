@@ -315,7 +315,7 @@ def render_tab_option_market(trade_date: dt.date):
         pct_diff = price_diff / prev_close * 100
         price_color = "#FF3B30" if price_diff > 0 else "#34C759" if price_diff < 0 else "#000000"
 
-    st.markdown("<h2 class='fut-section-title'>📈 台指期貨｜結算方向判斷</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 class='fut-section-title'>📈 台指期貨｜趨勢方向</h2>", unsafe_allow_html=True)
     mood = ai["direction_text"]
     cls = "bull" if mood == "偏多" else "bear" if mood == "偏空" else "neut"
     c1, c2, c3, c4, c5 = st.columns([1.6,1.6,1.2,1.2,1.4])
@@ -388,7 +388,7 @@ def render_tab_option_market(trade_date: dt.date):
         }
 
     st.divider()
-    st.markdown("<h2 class='opt-section-title'>🧩 選擇權｜ΔOI × 結構 × 價格行為</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 class='opt-section-title'>🧩 選擇權｜選擇權趨勢/稱壓區間</h2>", unsafe_allow_html=True)
 
     df_opt = fetch_option_latest(trade_date)
     opt = calc_option_bias_v3(df_opt, fut_price)
