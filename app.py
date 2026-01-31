@@ -189,8 +189,8 @@ def fetch_single_stock_daily(stock_id: str, trade_date: dt.date):
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_top10_by_volume(trade_date: dt.date) -> pd.DataFrame:
     df = finmind_get(
-        dataset="TaiwanStockPrice",
-        data_id=None,  # ⭐ 關鍵：不指定股票 → 全市場
+        dataset="TaiwanStockTradingDailyReport",
+        data_id=None,
         start_date=trade_date.strftime("%Y-%m-%d"),
         end_date=trade_date.strftime("%Y-%m-%d"),
     )
@@ -198,13 +198,10 @@ def fetch_top10_by_volume(trade_date: dt.date) -> pd.DataFrame:
     if df.empty:
         return df
 
-    # 保險：只留查詢交易日
-    df = df[df["date"] == trade_date.strftime("%Y-%m-%d")]
-
-    # 成交量確保為數值
+    # 成交量轉數值
     df["Trading_Volume"] = pd.to_numeric(df["Trading_Volume"], errors="coerce")
 
-    # 取成交量前 10 名
+    # 依成交量排序，取前 10
     df = df.sort_values("Trading_Volume", ascending=False).head(10)
 
     return df
