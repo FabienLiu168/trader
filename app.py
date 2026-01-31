@@ -20,11 +20,11 @@ st.markdown(
 div[data-testid="stAppViewContainer"] > .main { padding-top: 3.2rem; }
 
 .app-title{ font-size:2.5rem;font-weight:750;margin-top:-60px;text-align:center;letter-spacing:0.5px;margin-bottom:2px; }
-.app-subtitle{ font-size:1.3rem;opacity:.8;margin:.45rem 0 1.1rem;text-align:center; }
+.app-subtitle{ font-size:1.2rem;opacity:.8;margin:.45rem 0 1.1rem;text-align:center; }
 
 /* 期貨區段標題 */
 .fut-section-title{
-  font-size:1.6rem !important;   /* ⭐ 關鍵在這 */
+  font-size:1.8rem !important;   /* ⭐ 關鍵在這 */
   font-weight:400 !important;
   display:flex;
   align-items:center;
@@ -42,9 +42,9 @@ div[data-testid="stAppViewContainer"] > .main { padding-top: 3.2rem; }
   justify-content:space-between;
 }
 
-.kpi-title{ font-size:.95rem;opacity:.85 }
+.kpi-title{ font-size:1.2rem;opacity:.85 }
 .kpi-value{ font-size:1.6rem;font-weight:500;line-height:1.1 }
-.kpi-sub{ font-size:.8rem;opacity:.65;line-height:1.1 }
+.kpi-sub{ font-size:1.0rem;opacity:.65;line-height:1.1 }
 
 .bull{color:#FF3B30}
 .bear{color:#34C759}
@@ -52,7 +52,7 @@ div[data-testid="stAppViewContainer"] > .main { padding-top: 3.2rem; }
 
 /* 選擇權區段標題 */
 .opt-section-title{
-  font-size:1.6rem !important;   /* ⭐ 想跟期貨一樣就同數值 */
+  font-size:1.8rem !important;   /* ⭐ 想跟期貨一樣就同數值 */
   font-weight:400 !important;
   display:flex;
   align-items:center;
