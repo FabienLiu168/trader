@@ -200,11 +200,9 @@ def fetch_top10_by_volume(trade_date: dt.date) -> pd.DataFrame:
 
     # 成交量轉數值
     df["Trading_Volume"] = pd.to_numeric(df["Trading_Volume"], errors="coerce")
-
     # 依成交量排序，取前 10
-    df = df.sort_values("Trading_Volume", ascending=False).head(10)
-
-    return df
+    df = df.dropna(subset=["Trading_Volume"])
+    return df.sort_values("Trading_Volume", ascending=False).head(10)
 
 def render_stock_table_html(df: pd.DataFrame):
     """
