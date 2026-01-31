@@ -142,21 +142,21 @@ if not is_trading_day(trade_date):
     st.stop()
 
 with tab1:
-# =========================
-# 期貨 Position
-# =========================
-@st.cache_data(ttl=600, show_spinner=False)
-def fetch_position_for_trade_date(trade_date: dt.date):
-    df = finmind_get(
-        "TaiwanFuturesDaily", "TX",
-        trade_date.strftime("%Y-%m-%d"),
-        (trade_date + dt.timedelta(days=3)).strftime("%Y-%m-%d"),
-    )
-    if df.empty:
+    # =========================
+    # 期貨 Position
+    # =========================
+    @st.cache_data(ttl=600, show_spinner=False)
+    def fetch_position_for_trade_date(trade_date: dt.date):
+        df = finmind_get(
+            "TaiwanFuturesDaily", "TX",
+            trade_date.strftime("%Y-%m-%d"),
+            (trade_date + dt.timedelta(days=3)).strftime("%Y-%m-%d"),
+        )
+        if df.empty:
+            return df
+        df = df[df["trading_session"].astype(str) == "position"].copy()
+        df["trade_date"] = trade_date
         return df
-    df = df[df["trading_session"].astype(str) == "position"].copy()
-    df["trade_date"] = trade_date
-    return df
 
 def pick_main_contract_position(df, trade_date):
     x = df.copy()
