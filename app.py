@@ -202,30 +202,29 @@ def fetch_top10_volume_from_twse(trade_date: dt.date) -> pd.DataFrame:
         "response": "json",
     }
 
-    # r = requests.get(url, params=params, timeout=15)
     headers = {
-    "User-Agent": "Mozilla/5.0 (compatible; StockBot/1.0)"
-}
+        "User-Agent": "Mozilla/5.0 (compatible; StockBot/1.0)"
+    }
 
-r = requests.get(
-    url,
-    params=params,
-    headers=headers,
-    timeout=15,
-    verify=False   # ✅ 關鍵：關閉 SSL 驗證
-)
+    try:
+        r = requests.get(
+            url,
+            params=params,
+            headers=headers,
+            timeout=15,
+            verify=False,   # ⚠️ 避免 SSL Error（Streamlit Cloud 必須）
+        )
+        j = r.json()
+    except Exception:
+        return pd.DataFrame()
 
-    j = r.json()
-except Exception:
-    return pd.DataFrame()
+    if j.get("stat") != "OK":
+        return pd.DataFrame()
 
-if j.get("stat") != "OK":
-    return pd.DataFrame()
+    df = pd.DataFrame(j["data"], columns=j["fields"])
 
-df = pd.DataFrame(j["data"], columns=j["fields"])
-
-# 欄位標準化
-df = df.rename(columns={
+    # 欄位標準化
+    df = df.rename(columns={
         "證券代號": "股票代碼",
         "證券名稱": "股票名稱",
         "成交股數": "成交量",
@@ -234,7 +233,21 @@ df = df.rename(columns={
         "最高價": "最高",
         "最低價": "最低",
         "收盤價": "收盤",
-})
+    })
+
+    # 數值清洗
+    for col in ["成交量", "成交金額", "開盤", "最高", "最低", "收盤"]:
+        df[col] = (
+            df[col]
+            .astype(str)
+            .str.replace(",", "", regex=False)
+            .replace("--", None)
+        )
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # 官方資料本身已依成交量排序
+    return df.head(10)
+
 
     # 數值清洗
     for col in ["成交量", "成交金額", "開盤", "最高", "最低", "收盤"]:
