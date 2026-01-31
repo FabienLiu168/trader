@@ -29,10 +29,57 @@ div[data-testid="stAppViewContainer"] > .main { padding-top: 3.2rem; }
   align-items:center;
 }
 
-/* Tabs 標題字形大小 */
+/* Tabs 模組名稱字形大小 */
 button[data-baseweb="tab"] > div {
   font-size: 1.5rem;   /* 👈 你要的大小，例如 1.1 / 1.3 / 1.5 */
   font-weight: 600;     /* 可選：加粗 */
+}
+/* =========================
+   Tabs：初始黑底白字
+   ========================= */
+
+/* tab 外框（整排） */
+div[data-baseweb="tab-list"] {
+  background-color: #000000;
+  border-radius: 10px;
+  padding: 4px;
+}
+
+/* 所有 tab（未選中） */
+button[data-baseweb="tab"] {
+  background-color: #000000 !important;
+  color: #FFFFFF !important;
+  border-radius: 8px;
+  margin: 0 4px;
+}
+
+/* tab 文字 */
+button[data-baseweb="tab"] > div {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #FFFFFF !important;
+}
+
+/* =========================
+   Tabs：被選中（反白）
+   ========================= */
+
+/* 被選中的 tab */
+button[data-baseweb="tab"][aria-selected="true"] {
+  background-color: #FFFFFF !important;
+}
+
+/* 被選中的 tab 文字 */
+button[data-baseweb="tab"][aria-selected="true"] > div {
+  color: #F5C542 !important;   /* 👈 淡黃色，可自行調 */
+  font-weight: 700;
+}
+
+/* =========================
+   Hover 效果（加分）
+   ========================= */
+button[data-baseweb="tab"]:hover {
+  background-color: #1a1a1a !important;
 }
 
 .kpi-card{
