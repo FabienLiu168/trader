@@ -186,6 +186,55 @@ def fetch_single_stock_daily(stock_id: str, trade_date: dt.date):
     )
     return df
 
+def render_stock_table_html(df: pd.DataFrame):
+    """
+    專門給第二模組用的 HTML 表格（可調字型大小）
+    """
+    st.markdown(
+        """
+        <style>
+        .stock-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 18px;   /* 👈 這裡就是你要調的字型 */
+        }
+        .stock-table th {
+            background-color: #f4f6f8;
+            padding: 10px;
+            text-align: center;
+            font-size: 16px;
+            border-bottom: 1px solid #ddd;
+        }
+        .stock-table td {
+            padding: 10px;
+            text-align: right;
+            border-bottom: 1px solid #eee;
+        }
+        .stock-table td:nth-child(1),
+        .stock-table td:nth-child(2) {
+            text-align: center;
+            font-weight: 600;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    html = "<table class='stock-table'><thead><tr>"
+    for col in df.columns:
+        html += f"<th>{col}</th>"
+    html += "</tr></thead><tbody>"
+
+    for _, row in df.iterrows():
+        html += "<tr>"
+        for v in row:
+            html += f"<td>{v}</td>"
+        html += "</tr>"
+
+    html += "</tbody></table>"
+
+    st.markdown(html, unsafe_allow_html=True)
+
 # =========================
 # 第一模組：期權大盤（100% 等價封裝）
 # =========================
@@ -430,7 +479,8 @@ def render_tab_stock_futures(trade_date: dt.date):
     #st.success(f"✅ 成功取得 {trade_date} 個股資料（共 {len(df_view)} 檔）")
 
     # ✅ hide_index=True → 移除最左邊 0,1,2
-    st.dataframe(df_view, use_container_width=True, hide_index=True)
+   # st.dataframe(df_view, use_container_width=True, hide_index=True)
+    render_stock_table_html(df_view)
 
 # =========================
 # 主流程
