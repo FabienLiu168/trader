@@ -34,7 +34,7 @@ div[data-testid="stAppViewContainer"] > .main { padding-top: 3.2rem; }
   border:1px solid rgba(255,255,255,.12);
   border-radius:14px;
   padding:16px 18px;
-  background:#EEEAE7;
+  background:#F4F6F5;
   box-shadow:0 6px 22px rgba(0,0,0,.18);
   min-height:140px;
   display:flex;
