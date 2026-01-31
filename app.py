@@ -163,37 +163,23 @@ def finmind_get(dataset, data_id, start_date, end_date):
         "end_date": end_date,
         "token": FINMIND_TOKEN,
     }
-
-    # ⚠️ FinMind 不接受 data_id=None
     if data_id:
         params["data_id"] = data_id
 
-    r = requests.get(
-        FINMIND_API,
-        params=params,
-        timeout=30,
-    )
-
+    r = requests.get(FINMIND_API, params=params, timeout=30)
     if r.status_code != 200:
         return pd.DataFrame()
 
-    data = r.json().get("data", [])
-    return pd.DataFrame(data)
+    return pd.DataFrame(r.json().get("data", []))
 
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_single_stock_daily(stock_id: str, trade_date: dt.date):
+    """
+    最小驗證版本：只確認 FinMind 是否能回傳資料
+    """
     df = finmind_get(
-        dataset="TaiwanStockDaily",
+        dataset="TaiwanStockDailyPrice",   # ✅ 正確資料集
         data_id=stock_id,
-        start_date=trade_date.strftime("%Y-%m-%d"),
-        end_date=trade_date.strftime("%Y-%m-%d"),
-    )
-    return df
-@st.cache_data(ttl=600, show_spinner=False)
-def fetch_single_stock_daily_price(stock_id: str, trade_date: dt.date):
-    df = finmind_get(
-        dataset="TaiwanStockDailyPrice",
-        data_id=stock_id,  # 👈 一定要是字串，例如 "2330"
         start_date=trade_date.strftime("%Y-%m-%d"),
         end_date=trade_date.strftime("%Y-%m-%d"),
     )
@@ -396,30 +382,20 @@ def render_tab_option_market(trade_date: dt.date):
 def render_tab_stock_futures(trade_date: dt.date):
 
     st.markdown(
-        "<h2 class='fut-section-title'>📊 個股期貨｜單一股票測試（FinMind 驗證）</h2>",
+        "<h2 class='fut-section-title'>📊 個股期貨｜單一股票資料測試（最小驗證）</h2>",
         unsafe_allow_html=True,
     )
 
-    st.caption("🎯 目的：確認 FinMind 是否能成功回傳資料")
+    for stock_id, name in [("2330", "台積電"), ("2303", "聯電")]:
+        st.subheader(f"🔍 {stock_id} {name}")
 
-    # ===== 2330 台積電 =====
-    st.subheader("🔍 2330 台積電")
-    df_2330 = fetch_single_stock_daily_price("2330", trade_date)
+        df = fetch_single_stock_daily(stock_id, trade_date)
 
-    if df_2330.empty:
-        st.warning("⚠️ 2330 該交易日無資料（可能非交易日或 FinMind 尚未更新）")
-    else:
-        st.dataframe(df_2330, use_container_width=True)
-
-    # ===== 2303 聯電 =====
-    st.subheader("🔍 2303 聯電")
-    df_2303 = fetch_single_stock_daily_price("2303", trade_date)
-
-    if df_2303.empty:
-        st.warning("⚠️ 2303 該交易日無資料")
-    else:
-        st.dataframe(df_2303, use_container_width=True)
-
+        if df.empty:
+            st.warning(f"⚠️ {stock_id} 該日 FinMind 無回傳資料")
+        else:
+            st.success("✅ 成功取得 FinMind 原始資料")
+            st.dataframe(df, use_container_width=True)
 
 # =========================
 # 主流程
