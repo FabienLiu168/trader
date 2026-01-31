@@ -412,7 +412,7 @@ def render_tab_stock_futures(trade_date: dt.date):
             "Trading_money": row["Trading_money"],
         }])
 
-        st.success(f"✅ 成功取得 {sid}（{trade_date}）資料")
+        # st.success(f"✅ 成功取得 {sid}（{trade_date}）資料")
         st.dataframe(df_view, use_container_width=True)
 
 # =========================
