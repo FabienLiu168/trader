@@ -390,14 +390,15 @@ def render_tab_stock_futures(trade_date: dt.date):
         st.subheader(f"🔍 {sid} {name}")
 
         df = fetch_single_stock_daily(sid, trade_date)
+        # ✅【關鍵】只保留查詢交易日當天
+        df = df[df["date"] == trade_date.strftime("%Y-%m-%d")]
 
         if df.empty:
-            st.warning(f"⚠️ {sid} FinMind 無回傳資料")
+            st.warning(f"⚠️ {sid} {trade_date} 無當日資料")
             continue
 
-        st.success(f"✅ 成功取得 {sid} 資料（共 {len(df)} 筆）")
-
-        # 🔥 不要只顯示 raw，先排序一下
+        st.success(f"✅ 成功取得 {sid} {trade_date} 當日資料")
+        
         df = df.sort_values("date")
 
         st.dataframe(
