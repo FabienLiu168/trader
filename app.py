@@ -153,27 +153,80 @@ FINMIND_TOKEN = get_finmind_token()
 FINMIND_API = "https://api.finmindtrade.com/api/v4/data"
 
 @st.cache_data(ttl=600, show_spinner=False)
-def finmind_get(dataset, data_id, start_date, end_date):
-    if not FINMIND_TOKEN:
-        return pd.DataFrame()
+def fetch_top10_by_volume(trade_date: dt.date, lookback_days: int = 7):
+    for i in range(lookback_days):
+        d = trade_date - dt.timedelta(days=i)
+        if d.weekday() >= 5:
+            continue
 
-    params = dict(
-        dataset=dataset,
-        start_date=start_date,
-        end_date=end_date,
-        token=FINMIND_TOKEN,
-    )
+        df = finmind_get(
+            dataset="TaiwanStockDailyPrice",
+            data_id=None,
+            start_date=d.strftime("%Y-%m-%d"),
+            end_date=d.strftime("%Y-%m-%d"),
+        )
 
-    # 🔥 關鍵修正：只有在 data_id 有值時才傳
-    if data_id:
-        params["data_id"] = data_id
+        if df.empty or "Trading_Volume" not in df.columns:
+            continue
 
-    r = requests.get(FINMIND_API, params=params, timeout=30)
+        df["Trading_Volume"] = pd.to_numeric(df["Trading_Volume"], errors="coerce")
+        df["close"] = pd.to_numeric(df["close"], errors="coerce")
 
-    if r.status_code != 200:
-        return pd.DataFrame()
+        top10 = df.sort_values("Trading_Volume", ascending=False).head(10).copy()
+        return top10, d
 
-    return pd.DataFrame(r.json().get("data", []))
+    return pd.DataFrame(), None
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_prev_close(stock_id: str, trade_date: dt.date, lookback_days: int = 10):
+    for i in range(1, lookback_days + 1):
+        d = trade_date - dt.timedelta(days=i)
+        if d.weekday() >= 5:
+            continue
+
+        df = finmind_get(
+            dataset="TaiwanStockDailyPrice",
+            data_id=stock_id,
+            start_date=d.strftime("%Y-%m-%d"),
+            end_date=d.strftime("%Y-%m-%d"),
+        )
+
+        if not df.empty and "close" in df.columns:
+            close = pd.to_numeric(df.iloc[0]["close"], errors="coerce")
+            if pd.notna(close):
+                return close
+
+    return None
+
+
+def build_top10_with_change_pct(trade_date: dt.date):
+    df_top10, actual_date = fetch_top10_by_volume(trade_date)
+
+    if df_top10.empty:
+        return pd.DataFrame(), None
+
+    records = []
+
+    for _, r in df_top10.iterrows():
+        stock_id = str(r["stock_id"])
+        today_close = r["close"]
+        prev_close = fetch_prev_close(stock_id, actual_date)
+
+        if prev_close and prev_close != 0:
+            chg_pct = (today_close - prev_close) / prev_close * 100
+        else:
+            chg_pct = None
+
+        records.append({
+            "股票代號": stock_id,
+            "成交量": int(r["Trading_Volume"]),
+            "收盤價": round(today_close, 2),
+            "漲跌幅(%)": round(chg_pct, 2) if chg_pct is not None else None,
+        })
+
+    return pd.DataFrame(records), actual_date
+
 
 # =========================
 # 第一模組：期權大盤（100% 等價封裝）
@@ -371,60 +424,20 @@ def render_tab_option_market(trade_date: dt.date):
 def render_tab_stock_futures(trade_date: dt.date):
 
     st.markdown(
-        "<h2 class='fut-section-title'>📊 個股期貨｜現貨成交量 Top10</h2>",
+        "<h2 class='fut-section-title'>📊 個股期貨｜現貨成交量前 10 名</h2>",
         unsafe_allow_html=True,
     )
 
-    @st.cache_data(ttl=600, show_spinner=False)
-    def fetch_stock_volume_top10(trade_date: dt.date):
-        if not FINMIND_TOKEN:
-            return pd.DataFrame()
-
-        df = finmind_get(
-            dataset="TaiwanStockDaily",
-            data_id="",
-            start_date=trade_date.strftime("%Y-%m-%d"),
-            end_date=trade_date.strftime("%Y-%m-%d"),
-        )
-
-        if df.empty:
-            return df
-
-        # 欄位轉數值（保險）
-        for col in ["Trading_Volume", "Trading_money", "open", "close"]:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors="coerce")
-
-        # 計算漲跌%
-        df["chg_pct"] = (df["close"] - df["open"]) / df["open"] * 100
-
-        # 依成交量排序取前 10
-        df = df.sort_values("Trading_Volume", ascending=False).head(10)
-
-        return df
-
-    df = fetch_stock_volume_top10(trade_date)
+    df, actual_date = build_top10_with_change_pct(trade_date)
 
     if df.empty:
-        st.info("⚠️ 尚無法取得當日現貨成交量資料")
-        st.dataframe(
-            pd.DataFrame(columns=["標的名稱", "總成交量", "交易總金額", "收盤價（漲跌%）"]),
-            use_container_width=True,
-        )
+        st.info("⚠️ 尚無法取得現貨成交量前 10 名資料")
         return
 
-    show_df = pd.DataFrame({
-        "標的名稱": df["stock_id"],
-        "總成交量": df["Trading_Volume"],
-        "交易總金額": df["Trading_money"],
-        "收盤價（漲跌%）": df.apply(
-            lambda r: f"{r['close']:.2f} ({r['chg_pct']:+.2f}%)",
-            axis=1
-        ),
-    })
+    st.caption(f"📅 現貨資料日：{actual_date}")
 
-    st.dataframe(show_df, use_container_width=True)
-    st.caption("📌 資料來源：FinMind 台股公開資料")
+    st.dataframe(df, use_container_width=True)
+
 
 
 # =========================
