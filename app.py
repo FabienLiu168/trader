@@ -469,18 +469,5 @@ def render_tab_stock_futures(trade_date: dt.date):
     st.dataframe(show_df, use_container_width=True)
     st.caption("📌 資料來源：FinMind 台股公開資料")
 
-# =========================
-# 主流程（Tabs）
-# =========================
-
-if not is_trading_day(trade_date):
-    st.warning("📅 非交易日（週六 / 週日）不顯示任何資料")
-    st.stop()
-
-tab1, tab2 = st.tabs(["📈 期權大盤", "📊 個股期貨"])
-
-with tab1:
-    render_tab_option_market(trade_date)
-
 with tab2:
     render_tab_stock_futures(trade_date)
