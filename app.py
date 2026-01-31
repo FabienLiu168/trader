@@ -175,23 +175,16 @@ def finmind_get(dataset, data_id, start_date, end_date):
 
     return pd.DataFrame(j.get("data", []))
 
+
 @st.cache_data(ttl=600, show_spinner=False)
-def fetch_top10_by_volume(trade_date: dt.date) -> pd.DataFrame:
+def fetch_single_stock_daily(stock_id: str, trade_date: dt.date):
     df = finmind_get(
-        dataset="TaiwanStockTradingDailyReport",
-        data_id=None,
-        start_date=trade_date.strftime("%Y-%m-%d"),
+        dataset="TaiwanStockPrice",   # ✅ 正確
+        data_id=stock_id,
+        start_date=(trade_date - dt.timedelta(days=3)).strftime("%Y-%m-%d"),
         end_date=trade_date.strftime("%Y-%m-%d"),
     )
-
-    if df.empty:
-        return df
-
-    # 成交量轉數值
-    df["Trading_Volume"] = pd.to_numeric(df["Trading_Volume"], errors="coerce")
-    # 依成交量排序，取前 10
-    df = df.dropna(subset=["Trading_Volume"])
-    return df.sort_values("Trading_Volume", ascending=False).head(10)
+    return df
 
 def render_stock_table_html(df: pd.DataFrame):
     """
@@ -438,22 +431,37 @@ def render_tab_option_market(trade_date: dt.date):
 def render_tab_stock_futures(trade_date: dt.date):
 
     st.markdown(
+        """
+        <style>
+        div[data-testid="stDataFrame"] * {
+            font-size:3.8rem !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    
+    st.markdown(
         "<h2 class='fut-section-title'>📊 個股期貨｜前十大成交量個股</h2>",
         unsafe_allow_html=True,
     )
 
-    df_top = fetch_top10_by_volume(trade_date)
+    rows = []  # ✅ 收集所有股票的資料列
 
-    if df_top.empty:
-        st.warning("⚠️ 查詢日無成交量資料")
-        return
+    for sid, name in [("2330", "台積電"), ("2303", "聯電")]:
+        df = fetch_single_stock_daily(sid, trade_date)
 
-    rows = []
+        # 只保留查詢交易日當天
+        df_day = df[df["date"] == trade_date.strftime("%Y-%m-%d")]
 
-    for _, r in df_top.iterrows():
+        if df_day.empty:
+            continue
+
+        r = df_day.iloc[0]
+
         rows.append({
-            "股票代碼": r["stock_id"],
-            "股票名稱": r.get("stock_name", ""),
+            "股票代碼": sid,
+            "股票名稱": name,
             "開盤": r["open"],
             "最高": r["max"],
             "最低": r["min"],
@@ -468,6 +476,7 @@ def render_tab_stock_futures(trade_date: dt.date):
 
     df_view = pd.DataFrame(rows)
 
+    # === 顯示用格式轉換（不影響原始數據） ===
     df_view["成交量"] = (
         df_view["成交量"] / 10_000
     ).round(0).astype(int).map(lambda x: f"{x:,} 萬")
@@ -476,6 +485,7 @@ def render_tab_stock_futures(trade_date: dt.date):
         df_view["成交金額"] / 1_000_000
     ).round(0).astype(int).map(lambda x: f"{x:,} 百萬")
 
+   # st.dataframe(df_view, use_container_width=True, hide_index=True)
     render_stock_table_html(df_view)
 
 # =========================
