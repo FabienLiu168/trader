@@ -397,7 +397,7 @@ def render_tab_stock_futures(trade_date: dt.date):
             st.warning(f"⚠️ {sid} {trade_date} 無當日資料")
             continue
 
-        st.success(f"✅ 成功取得 {sid} {trade_date} 當日資料")
+        # st.success(f"✅ 成功取得 {sid} {trade_date} 當日資料")
         
         df = df.sort_values("date")
 
