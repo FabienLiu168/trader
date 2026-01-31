@@ -198,6 +198,56 @@ def fetch_single_stock_daily(stock_id: str, trade_date: dt.date):
     )
 
 @st.cache_data(ttl=600, show_spinner=False)
+def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> list[str]:
+    """
+    使用 TWSE 官方 CSV，取得成交量 Top10 股票代碼
+    """
+    import io
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    date_str = trade_date.strftime("%Y%m%d")
+    url = (
+        "https://www.twse.com.tw/exchangeReport/MI_INDEX"
+        f"?response=csv&date={date_str}&type=ALL"
+    )
+
+    try:
+        r = requests.get(url, timeout=20, verify=False)
+        r.encoding = "utf-8"
+    except Exception:
+        return []
+
+    lines = [
+        l for l in r.text.split("\n")
+        if l.count('",') > 10 and l.startswith('"')
+    ]
+
+    if not lines:
+        return []
+
+    df = pd.read_csv(io.StringIO("\n".join(lines)))
+    df.columns = df.columns.str.strip()
+
+    # 統一欄位名稱
+    code_col = "證券代號"
+    vol_col = "成交股數"
+
+    if code_col not in df.columns or vol_col not in df.columns:
+        return []
+
+    df[vol_col] = (
+        df[vol_col]
+        .astype(str)
+        .str.replace(",", "", regex=False)
+        .astype(float)
+    )
+
+    df = df.sort_values(vol_col, ascending=False)
+    return df[code_col].head(10).astype(str).tolist()
+
+
+@st.cache_data(ttl=600, show_spinner=False)
 def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
     """
     使用 TWSE 官方 CSV，取得「成交量 Top10 股票」，再用 FinMind 補齊股價資料
@@ -654,18 +704,19 @@ def render_tab_option_market(trade_date: dt.date):
 # 第二模組：個股期貨（測試版）
 # =========================
 def render_tab_stock_futures(trade_date: dt.date):
-    # === 測試：顯示 TWSE 成交量 Top10 股票代碼 ===
-    df_top10 = fetch_top10_by_volume_twse_csv(trade_date)
+    
+    top10_ids = fetch_top10_by_volume_twse_csv(trade_date)
 
     st.write("📊 TWSE CSV 成交量 Top10 股票代碼：")
+    st.write(top10_ids)
 
-    if df_top10.empty:
-        st.warning("⚠️ TWSE 無法取得成交量資料")
-    else:
-        st.write(df_top10["股票代碼"].tolist())
+    if not top10_ids:
+        st.warning("⚠️ 查詢日無成交量資料")
+        return
 
     rows = []
-    for sid, name in [("2330", "台積電"), ("2303", "聯電")]:
+
+    for sid in top10_ids:
         df = fetch_single_stock_daily(sid, trade_date)
         df_day = df[df["date"] == trade_date.strftime("%Y-%m-%d")]
 
@@ -673,9 +724,10 @@ def render_tab_stock_futures(trade_date: dt.date):
             continue
 
         r = df_day.iloc[0]
+
         rows.append({
             "股票代碼": sid,
-            "股票名稱": name,
+            "股票名稱": r.get("stock_name", ""),
             "開盤": r["open"],
             "最高": r["max"],
             "最低": r["min"],
@@ -683,6 +735,19 @@ def render_tab_stock_futures(trade_date: dt.date):
             "成交量": f"{int(r['Trading_Volume'] / 10000):,} 萬",
             "成交金額": f"{int(r['Trading_money'] / 1_000_000):,} 百萬",
         })
+
+    if not rows:
+        st.warning("⚠️ FinMind 無法取得對應個股資料")
+        return
+
+    render_stock_table_html(pd.DataFrame(rows))
+
+
+    if df_top10.empty:
+        st.warning("⚠️ TWSE 無法取得成交量資料")
+    else:
+        st.write(df_top10["股票代碼"].tolist())
+        
 
     if not rows:
         st.warning("⚠️ 查詢日無任何個股資料")
