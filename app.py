@@ -159,7 +159,6 @@ def get_finmind_token():
 FINMIND_TOKEN = get_finmind_token()
 FINMIND_API = "https://api.finmindtrade.com/api/v4/data"
 
-
 @st.cache_data(ttl=600, show_spinner=False)
 def finmind_get(dataset, data_id, start_date, end_date):
     params = {
@@ -193,6 +192,42 @@ def fetch_single_stock_daily(stock_id: str, trade_date: dt.date):
         end_date=trade_date.strftime("%Y-%m-%d"),
     )
 
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_top10_stock_ids_from_yahoo() -> list[str]:
+    """
+    從 Yahoo 台股成交量排行抓取「前 10 名股票代碼」
+    """
+    url = "https://tw.stock.yahoo.com/_td-stock/api/resource/StockServices.rank"
+
+    payload = {
+        "exchange": "TAI",        # 上市
+        "market": "TW",
+        "rankType": "VOLUME",     # 成交量
+        "sortOrder": "DESC",
+        "start": 0,
+        "count": 10
+    }
+
+    headers = {
+        "content-type": "application/json",
+        "user-agent": "Mozilla/5.0"
+    }
+
+    try:
+        r = requests.post(url, json=payload, headers=headers, timeout=15)
+        r.raise_for_status()
+        data = r.json()
+    except Exception as e:
+        st.error(f"❌ Yahoo 成交量排行抓取失敗：{e}")
+        return []
+
+    stock_ids = []
+    for item in data.get("list", []):
+        symbol = item.get("symbol")
+        if symbol and symbol.isdigit():
+            stock_ids.append(symbol)
+
+    return stock_ids
 
 def render_stock_table_html(df: pd.DataFrame):
     st.markdown(
@@ -491,6 +526,10 @@ def render_tab_option_market(trade_date: dt.date):
 # 第二模組：個股期貨（測試版）
 # =========================
 def render_tab_stock_futures(trade_date: dt.date):
+    # === Yahoo 成交量 Top10 測試 ===
+    top10_ids = fetch_top10_stock_ids_from_yahoo()
+    st.write("📊 Yahoo 成交量 Top10 股票代碼：", top10_ids)
+
     st.markdown(
         "<h2 class='fut-section-title'>📊 個股期貨｜測試:直接指定兩檔股票</h2>",
         unsafe_allow_html=True,
