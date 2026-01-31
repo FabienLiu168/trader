@@ -246,6 +246,36 @@ def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> list[str]:
     df = df.sort_values(vol_col, ascending=False)
     return df[code_col].head(10).astype(str).tolist()
 
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
+    """
+    使用 TWSE 官方 CSV，取得「成交量 Top10 股票」，再用 FinMind 補齊股價資料
+    """
+
+    # === 1️⃣ TWSE 官方 CSV（最穩定） ===
+    date_str = trade_date.strftime("%Y%m%d")
+    url = "https://www.twse.com.tw/exchangeReport/MI_INDEX"
+    params = {
+        "response": "csv",
+        "date": date_str,
+        "type": "ALL",
+    }
+
+    try:
+        # r = requests.get(url, params=params, timeout=20)
+        r = requests.get(
+            url,
+            params=params,
+            timeout=20,
+            verify=False   # ✅ 關閉 SSL 驗證（關鍵）
+        )
+
+        r.encoding = "big5"
+    except Exception as e:
+        st.error(f"❌ TWSE CSV 下載失敗：{e}")
+        return pd.DataFrame()
+
     # === 2️⃣ 解析 CSV（只抓「每日收盤行情」那一段） ===
     lines = [
         line for line in r.text.split("\n")
@@ -674,33 +704,22 @@ def render_tab_option_market(trade_date: dt.date):
 # 第二模組：個股期貨（測試版）
 # =========================
 def render_tab_stock_futures(trade_date: dt.date):
-    # 1️⃣ 先抓 TWSE Top10（list[str]）
+    
     top10_ids = fetch_top10_by_volume_twse_csv(trade_date)
 
     st.write("📊 TWSE CSV 成交量 Top10 股票代碼：")
     st.write(top10_ids)
-    if not top10_ids:
-        st.warning("⚠️ TWSE 無法取得成交量排行")
+
+    if not top10_ids is None or top10_ids.empty:
+        st.warning("⚠️ 查詢日無前十大成交量資料")
         return
-        
-    # 2️⃣ 用 Top10 代碼去抓 FinMind
+
     rows = []
 
     for sid in top10_ids:
         df = fetch_single_stock_daily(sid, trade_date)
-
-        # 1️⃣ FinMind 回傳空表
-        if df.empty:
-            continue
-
-        # 2️⃣ 沒有 date 欄位
-        if "date" not in df.columns:
-            continue
-
-        # 3️⃣ 只在這裡才建立 df_day
         df_day = df[df["date"] == trade_date.strftime("%Y-%m-%d")]
 
-        # 4️⃣ df_day 一定存在，才檢查 empty
         if df_day.empty:
             continue
 
@@ -717,18 +736,25 @@ def render_tab_stock_futures(trade_date: dt.date):
             "成交金額": f"{int(r['Trading_money'] / 1_000_000):,} 百萬",
         })
 
-        
-    # 3️⃣ ⭐ 只在「這裡」判斷 rows
     if not rows:
         st.warning("⚠️ FinMind 無法取得對應個股資料")
         return
-    
-    # 4️⃣ 建立 df_view（這是唯一正確位置）
-    df_view = pd.DataFrame(rows)
 
-    # 5️⃣ 顯示表格
-    render_stock_table_html(df_view)
-    # render_stock_table_html(pd.DataFrame(rows))
+    render_stock_table_html(pd.DataFrame(rows))
+
+
+    if df_top10.empty:
+        st.warning("⚠️ TWSE 無法取得成交量資料")
+    else:
+        st.write(df_top10["股票代碼"].tolist())
+        
+
+    if not rows:
+        st.warning("⚠️ 查詢日無任何個股資料")
+        return
+
+    render_stock_table_html(pd.DataFrame(rows))
+
 
 # =========================
 # 主流程
