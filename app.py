@@ -388,7 +388,7 @@ def render_tab_option_market(trade_date: dt.date):
         }
 
     st.divider()
-    st.markdown("<h2 class='opt-section-title'>🧩 選擇權｜選擇權趨勢/稱壓區間</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 class='opt-section-title'>🧩 選擇權｜市場狀態與稱壓區間</h2>", unsafe_allow_html=True)
 
     df_opt = fetch_option_latest(trade_date)
     opt = calc_option_bias_v3(df_opt, fut_price)
