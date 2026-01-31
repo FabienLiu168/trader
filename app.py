@@ -186,6 +186,29 @@ def fetch_single_stock_daily(stock_id: str, trade_date: dt.date):
     )
     return df
 
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_top10_by_volume(trade_date: dt.date) -> pd.DataFrame:
+    df = finmind_get(
+        dataset="TaiwanStockPrice",
+        data_id=None,  # ⭐ 關鍵：不指定股票 → 全市場
+        start_date=trade_date.strftime("%Y-%m-%d"),
+        end_date=trade_date.strftime("%Y-%m-%d"),
+    )
+
+    if df.empty:
+        return df
+
+    # 保險：只留查詢交易日
+    df = df[df["date"] == trade_date.strftime("%Y-%m-%d")]
+
+    # 成交量確保為數值
+    df["Trading_Volume"] = pd.to_numeric(df["Trading_Volume"], errors="coerce")
+
+    # 取成交量前 10 名
+    df = df.sort_values("Trading_Volume", ascending=False).head(10)
+
+    return df
+
 def render_stock_table_html(df: pd.DataFrame):
     """
     專門給第二模組用的 HTML 表格（可調字型大小）
@@ -448,27 +471,26 @@ def render_tab_stock_futures(trade_date: dt.date):
 
     rows = []  # ✅ 收集所有股票的資料列
 
-    for sid, name in [("2330", "台積電"), ("2303", "聯電")]:
-        df = fetch_single_stock_daily(sid, trade_date)
+    df_top = fetch_top10_by_volume(trade_date)
 
-        # 只保留查詢交易日當天
-        df_day = df[df["date"] == trade_date.strftime("%Y-%m-%d")]
+if df_top.empty:
+    st.warning("⚠️ 查詢日無成交量資料")
+    return
 
-        if df_day.empty:
-            continue
+rows = []
 
-        r = df_day.iloc[0]
+for _, r in df_top.iterrows():
+    rows.append({
+        "股票代碼": r["stock_id"],
+        "股票名稱": r.get("stock_name", ""),  # 有就顯示，沒有也不會壞
+        "開盤": r["open"],
+        "最高": r["max"],
+        "最低": r["min"],
+        "收盤": r["close"],
+        "成交量": r["Trading_Volume"],
+        "成交金額": r["Trading_money"],
+    })
 
-        rows.append({
-            "股票代碼": sid,
-            "股票名稱": name,
-            "開盤": r["open"],
-            "最高": r["max"],
-            "最低": r["min"],
-            "收盤": r["close"],
-            "成交量": r["Trading_Volume"],
-            "成交金額": r["Trading_money"],
-        })
 
     if not rows:
         st.warning("⚠️ 查詢日無任何個股資料")
