@@ -177,6 +177,7 @@ def finmind_get(dataset, data_id, start_date, end_date):
         return pd.DataFrame()
 
     return pd.DataFrame(r.json().get("data", []))
+
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_top10_by_volume(trade_date: dt.date, lookback_days: int = 7):
     for i in range(lookback_days):
@@ -186,7 +187,7 @@ def fetch_top10_by_volume(trade_date: dt.date, lookback_days: int = 7):
 
         df = finmind_get(
             dataset="TaiwanStockDaily",
-            data_id="",   # ❗ 全市場一定要空字串
+            data_id="",
             start_date=d.strftime("%Y-%m-%d"),
             end_date=d.strftime("%Y-%m-%d"),
         )
@@ -194,21 +195,35 @@ def fetch_top10_by_volume(trade_date: dt.date, lookback_days: int = 7):
         if df.empty:
             continue
 
-        if "Trading_Volume" not in df.columns:
-            continue
+        # ===== 成交量欄位判斷（重點）=====
+        if "trade_volume" in df.columns:
+            vol_col = "trade_volume"
+        elif "Trading_Volume" in df.columns:
+            vol_col = "Trading_Volume"
+        else:
+            continue  # 這天資料不可用，換下一天
 
-        df["Trading_Volume"] = pd.to_numeric(df["Trading_Volume"], errors="coerce")
-        df["close"] = pd.to_numeric(df["close"], errors="coerce")
+        # ===== 欄位轉型 =====
+        df[vol_col] = pd.to_numeric(df[vol_col], errors="coerce")
+        df["open"] = pd.to_numeric(df.get("open"), errors="coerce")
+        df["close"] = pd.to_numeric(df.get("close"), errors="coerce")
 
+        df = df.dropna(subset=[vol_col, "open", "close"])
+
+        # ===== 取成交量前 10 名 =====
         top10 = (
-            df.sort_values("Trading_Volume", ascending=False)
+            df.sort_values(vol_col, ascending=False)
               .head(10)
               .copy()
         )
 
+        # 統一欄位名稱，後面好用
+        top10["成交量"] = top10[vol_col]
+
         return top10, d
 
     return pd.DataFrame(), None
+    
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_prev_close(stock_id: str, trade_date: dt.date, lookback_days: int = 10):
     for i in range(1, lookback_days + 1):
@@ -229,31 +244,25 @@ def fetch_prev_close(stock_id: str, trade_date: dt.date, lookback_days: int = 10
                 return close
 
     return None
+
 def build_top10_with_change_pct(trade_date: dt.date):
     df_top10, actual_date = fetch_top10_by_volume(trade_date)
 
     if df_top10.empty:
         return pd.DataFrame(), None
 
-    rows = []
+    df_top10["漲跌幅(%)"] = (
+        (df_top10["close"] - df_top10["open"]) / df_top10["open"] * 100
+    ).round(2)
 
-    for _, r in df_top10.iterrows():
-        stock_id = r["stock_id"]
-        today_close = r["close"]
-        prev_close = fetch_prev_close(stock_id, actual_date)
+    result = pd.DataFrame({
+        "股票代號": df_top10["stock_id"],
+        "成交量": df_top10["成交量"].astype(int),
+        "收盤價": df_top10["close"].round(2),
+        "漲跌幅(%)": df_top10["漲跌幅(%)"],
+    })
 
-        chg_pct = None
-        if prev_close and prev_close != 0:
-            chg_pct = (today_close - prev_close) / prev_close * 100
-
-        rows.append({
-            "股票代號": stock_id,
-            "成交量": int(r["Trading_Volume"]),
-            "收盤價": round(today_close, 2),
-            "漲跌幅(%)": round(chg_pct, 2) if chg_pct is not None else None,
-        })
-
-    return pd.DataFrame(rows), actual_date
+    return result, actual_date
 
 # =========================
 # 第一模組：期權大盤（100% 等價封裝）
