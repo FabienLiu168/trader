@@ -474,7 +474,7 @@ def render_tab_stock_futures(trade_date: dt.date):
         st.warning("⚠️ 查詢日無任何個股資料")
         return
 
-    #df_view = pd.DataFrame(rows)
+    df_view = pd.DataFrame(rows)
 
     # === 顯示用格式轉換（不影響原始數據） ===
     df_view["成交量"] = (
