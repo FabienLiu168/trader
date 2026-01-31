@@ -191,7 +191,7 @@ def fetch_top10_volume_from_twse(trade_date: dt.date) -> pd.DataFrame:
     """
     由 TWSE 官方取得「當日成交量前 10 名股票」
     """
-
+    st.write("TWSE columns:", df.columns.tolist())
     # TWSE 使用民國年
     date_str = trade_date.strftime("%Y%m%d")
 
@@ -236,14 +236,19 @@ def fetch_top10_volume_from_twse(trade_date: dt.date) -> pd.DataFrame:
     })
 
     # 數值清洗
-    for col in ["成交量", "成交金額", "開盤", "最高", "最低", "收盤"]:
-        df[col] = (
-            df[col]
-            .astype(str)
-            .str.replace(",", "", regex=False)
-            .replace("--", None)
-        )
-        df[col] = pd.to_numeric(df[col], errors="coerce")
+    numeric_cols = ["成交量", "成交金額", "開盤", "最高", "最低", "收盤"]
+
+for col in numeric_cols:
+    if col not in df.columns:
+        continue  # ✅ 欄位不存在就跳過，不炸
+    df[col] = (
+        df[col]
+        .astype(str)
+        .str.replace(",", "", regex=False)
+        .replace("--", None)
+    )
+    df[col] = pd.to_numeric(df[col], errors="coerce")
+
 
     # 官方資料本身已依成交量排序
     return df.head(10)
