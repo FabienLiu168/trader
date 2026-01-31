@@ -15,11 +15,11 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # 基本設定
 # =========================
 st.set_page_config(
-    page_title="大盤趨勢/個股期貨 (法酷交易室)",
+    page_title="法酷交易室(大盤/股期)",
     layout="wide"
 )
 
-APP_TITLE = "大盤趨勢/個股期貨 (法酷交易室)"
+APP_TITLE = "法酷交易室(大盤/股期)"
 
 st.markdown(
     """
