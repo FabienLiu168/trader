@@ -153,6 +153,33 @@ FINMIND_TOKEN = get_finmind_token()
 FINMIND_API = "https://api.finmindtrade.com/api/v4/data"
 
 @st.cache_data(ttl=600, show_spinner=False)
+def finmind_get(dataset, data_id, start_date, end_date):
+    if not FINMIND_TOKEN:
+        return pd.DataFrame()
+
+    params = {
+        "dataset": dataset,
+        "start_date": start_date,
+        "end_date": end_date,
+        "token": FINMIND_TOKEN,
+    }
+
+    if data_id:
+        params["data_id"] = data_id
+
+    r = requests.get(
+        FINMIND_API,
+        params=params,
+        timeout=30,
+    )
+
+    if r.status_code != 200:
+        return pd.DataFrame()
+
+    return pd.DataFrame(r.json().get("data", []))
+
+
+@st.cache_data(ttl=600, show_spinner=False)
 def fetch_top10_by_volume(trade_date: dt.date, lookback_days: int = 7):
     for i in range(lookback_days):
         d = trade_date - dt.timedelta(days=i)
