@@ -442,7 +442,7 @@ def render_tab_stock_futures(trade_date: dt.date):
     )
     
     st.markdown(
-        "<h2 class='fut-section-title'>📊 個股期貨｜單一股票資料驗證</h2>",
+        "<h2 class='fut-section-title'>📊 個股期貨｜前十大成交量個股</h2>",
         unsafe_allow_html=True,
     )
 
