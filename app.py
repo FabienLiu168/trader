@@ -385,7 +385,7 @@ def render_tab_stock_futures(trade_date: dt.date):
         """
         <style>
         div[data-testid="stDataFrame"] * {
-            font-size: 30px !important;
+            font-size:1.8rem !important;
         }
         </style>
         """,
