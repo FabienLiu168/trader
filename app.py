@@ -44,13 +44,13 @@ div[data-testid="stAppViewContainer"] > .main { padding-top: 3.2rem; }
 
 /* 查詢交易日 標題 */
 div[data-testid="stDateInput"] label {
-  font-size: 1.3rem !important;
+  font-size: 1.5rem !important;
   font-weight: 800;
 }
 
 /* 日期數值 */
 div[data-testid="stDateInput"] input {
-  font-size: 1.15rem !important;
+  font-size: 1.5rem !important;
   font-weight: 600;
 }
 
