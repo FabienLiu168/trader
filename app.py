@@ -195,17 +195,13 @@ def finmind_get(dataset, data_id, start_date, end_date):
 
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_single_stock_daily(stock_id: str, trade_date: dt.date):
-    """
-    最小驗證版本：只確認 FinMind 是否能回傳資料
-    """
     df = finmind_get(
-        dataset="TaiwanStockDailyPrice",   # ✅ 正確資料集
+        dataset="TaiwanStockPrice",   # ✅ 正確 dataset
         data_id=stock_id,
         start_date=trade_date.strftime("%Y-%m-%d"),
         end_date=trade_date.strftime("%Y-%m-%d"),
     )
     return df
-
 
 # =========================
 # 第一模組：期權大盤（100% 等價封裝）
@@ -407,29 +403,18 @@ def render_tab_stock_futures(trade_date: dt.date):
         unsafe_allow_html=True,
     )
 
-    df = fetch_stock_trading_daily(trade_date)
+    st.caption("🎯 目的：確認 FinMind TaiwanStockPrice 是否成功回傳資料")
 
-    if df.empty:
-        st.error("❌ FinMind TaiwanStockTradingDaily 當日無任何資料")
-        return
+    for sid, name in [("2330", "台積電"), ("2303", "聯電")]:
+        st.subheader(f"🔍 {sid} {name}")
 
-    # 只留下你要的兩檔
-    df_test = df[df["stock_id"].isin(["2330", "2303"])].copy()
+        df = fetch_single_stock_daily(sid, trade_date)
 
-    if df_test.empty:
-        st.warning("⚠️ 有資料，但 2330 / 2303 不在當日回傳結果中")
-        st.dataframe(df.head(20))
-        return
-
-    df_test = df_test[[
-        "date",
-        "stock_id",
-        "Trading_Volume",
-        "Trading_money",
-    ]]
-
-    st.success("✅ 成功從 FinMind 抓到成交量資料")
-    st.dataframe(df_test, use_container_width=True)
+        if df.empty:
+            st.warning(f"⚠️ {sid} 該日 FinMind 無回傳資料")
+        else:
+            st.success(f"✅ 成功取得 {sid} 資料")
+            st.dataframe(df, use_container_width=True)
 
 # =========================
 # 主流程
