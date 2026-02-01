@@ -774,16 +774,32 @@ def render_tab_stock_futures(trade_date: dt.date):
         df_day = df[df["date"] == trade_date.strftime("%Y-%m-%d")]
         if df_day.empty:
             continue
-
+            
         r = df_day.iloc[0]
+        
+        # 取得前一交易日收盤價（同一 API 內）
+        df_prev = df[df["date"] < trade_date.strftime("%Y-%m-%d")].sort_values("date")
+        prev_close = (
+            df_prev.iloc[-1]["close"]
+            if not df_prev.empty and pd.notna(df_prev.iloc[-1]["close"])
+            else None
+        )
 
+        close_price = r["close"]
+
+        if prev_close:
+            diff_pct = (close_price - prev_close) / prev_close * 100
+            close_display = f"{close_price:.2f} ({diff_pct:+.2f}%)"
+        else:
+            close_display = f"{close_price:.2f}"
+            
         rows.append({
             "股票代碼": sid,
             "股票名稱": stock_name,   # ✅ 正確中文名稱
             "開盤": r["open"],
             "最高": r["max"],
             "最低": r["min"],
-            "收盤": r["close"],
+            "收盤": close_display,
             "成交量": r["Trading_Volume"],
             "成交金額": r["Trading_money"],
         })
