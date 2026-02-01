@@ -209,7 +209,11 @@ def fetch_single_stock_daily(stock_id: str, trade_date: dt.date):
     )
 
 @st.cache_data(ttl=600, show_spinner=False)
-def fetch_multi_stock_daily_async(stock_ids: list[str], trade_date: dt.date):
+def fetch_multi_stock_daily(stock_ids, trade_date):
+    return asyncio.run(_fetch_multi_stock_daily_async(stock_ids, trade_date))
+
+
+async def _fetch_multi_stock_daily_async(stock_ids, trade_date):
 
     async def runner():
         start = (trade_date - dt.timedelta(days=3)).strftime("%Y-%m-%d")
@@ -371,27 +375,11 @@ def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
         return pd.DataFrame()
 
     # === 5️⃣ 用 FinMind 補齊資料（保證你後面邏輯一致） ===
-    rows = []
-    for _, r in top10.iterrows():
-        df_price = fetch_single_stock_daily(r["stock_id"], trade_date)
-        df_day = df_price[df_price["date"] == trade_date.strftime("%Y-%m-%d")]
+    return top10.rename(columns={
+        "stock_id": "股票代碼",
+        "stock_name": "股票名稱"
+    })[["股票代碼", "股票名稱"]]
 
-        if df_day.empty:
-            continue
-
-        p = df_day.iloc[0]
-        rows.append({
-            "股票代碼": r["stock_id"],
-            "股票名稱": r["stock_name"],
-            "開盤": p["open"],
-            "最高": p["max"],
-            "最低": p["min"],
-            "收盤": p["close"],
-            "成交量": p["Trading_Volume"],
-            "成交金額": p["Trading_money"],
-        })
-
-    return pd.DataFrame(rows)
 
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_top10_volume_from_twse(trade_date: dt.date) -> list[str]:
