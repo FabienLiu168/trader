@@ -15,11 +15,11 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # 基本設定
 # =========================
 st.set_page_config(
-    page_title="大叔翻倍操盤室",
+    page_title="順流小哥操盤室",
     layout="wide"
 )
 
-APP_TITLE = "大叔翻倍操盤室"
+APP_TITLE = "順流小哥操盤室"
 
 st.markdown(
     """
