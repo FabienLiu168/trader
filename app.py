@@ -716,7 +716,7 @@ def render_tab_stock_futures(trade_date: dt.date):
     )
 
     st.markdown("### ⬤ TWSE 成交量 TOP10 股票")
-    st.write(top10_ids)
+    #st.write(top10_ids)
 
     if not top10_ids:
         st.warning("⚠️ 無前十大股票")
