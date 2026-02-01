@@ -191,6 +191,28 @@ def fetch_single_stock_daily(stock_id: str, trade_date: dt.date):
         start_date=(trade_date - dt.timedelta(days=3)).strftime("%Y-%m-%d"),
         end_date=trade_date.strftime("%Y-%m-%d"),
     )
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_multi_stock_daily(stock_ids: list[str], trade_date: dt.date):
+    """
+    一次抓多檔股票日資料（避免 N 次 HTTP）
+    """
+    dfs = []
+    start = (trade_date - dt.timedelta(days=3)).strftime("%Y-%m-%d")
+    end = trade_date.strftime("%Y-%m-%d")
+
+    for sid in stock_ids:
+        df = finmind_get(
+            dataset="TaiwanStockPrice",
+            data_id=sid,
+            start_date=start,
+            end_date=end,
+        )
+        if not df.empty:
+            df["stock_id"] = sid
+            dfs.append(df)
+
+    return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+
 
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> list[str]:
@@ -753,6 +775,14 @@ def render_tab_stock_futures(trade_date: dt.date):
         else [{"股票代碼": sid, "股票名稱": ""} for sid in top10_raw]
     )
 
+    # ✅ 一次抓完所有 Top10 股票日資料
+    stock_ids = [x["股票代碼"] for x in top10_list]
+    df_all_stock = fetch_multi_stock_daily(stock_ids, trade_date)
+
+    if df_all_stock.empty:
+        st.warning("⚠️ 查詢日無任何個股資料")
+        return
+
     st.markdown("### ⬤ TWSE 成交量 TOP10 股票")
     #st.write(top10_ids)
 
@@ -767,14 +797,9 @@ def render_tab_stock_futures(trade_date: dt.date):
         sid = item["股票代碼"]
         stock_name = item["股票名稱"]
 
-        df = fetch_single_stock_daily(sid, trade_date)
-        if df.empty or "date" not in df.columns:
-            continue
-
-        df_day = df[df["date"] == trade_date.strftime("%Y-%m-%d")]
-        if df_day.empty:
-            continue
-            
+        df_sid = df_all_stock[df_all_stock["stock_id"] == sid]
+        df_day = df_sid[df_sid["date"] == trade_date.strftime("%Y-%m-%d")]
+    
         r = df_day.iloc[0]
         
         # 取得前一交易日收盤價（同一 API 內）
