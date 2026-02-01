@@ -17,17 +17,17 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # 基本設定
 # =========================
 st.set_page_config(
-    page_title="法酷交易室",
+    page_title="法酷交易室(大盤 / 股期)",
     layout="wide"
 )
 
-APP_TITLE = "法酷交易室"
+APP_TITLE = "法酷交易室(大盤 / 股期)"
 
 st.markdown(
     """
     <style>
     div[data-testid="stAppViewContainer"] > .main {
-        padding-top: 3.5rem;
+        padding-top: 3.2rem;
     }
 
     .app-title{
@@ -736,7 +736,7 @@ def render_tab_option_market(trade_date: dt.date):
 
     st.divider()
     st.markdown(
-        "<h2 class='opt-section-title'>🧩 選擇權｜市場狀態</h2>",
+        "<h2 class='opt-section-title'>🧩 選擇權｜市場狀態與稱壓區間</h2>",
         unsafe_allow_html=True,
     )
 
