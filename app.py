@@ -723,6 +723,9 @@ def render_tab_stock_futures(trade_date: dt.date):
     #if not top10_ids:
     #    st.warning("⚠️ 無前十大股票")
     #    return
+    if top10_ids is None or (hasattr(top10_ids, "__len__") and len(top10_ids) == 0):
+    st.warning("⚠️ 無前十大股票")
+    return
 
     # 3️⃣ 蒐集個股資料
     rows = []
