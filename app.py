@@ -803,7 +803,11 @@ def render_tab_stock_futures(trade_date: dt.date):
         r = df_day.iloc[0]
         
         # 取得前一交易日收盤價（同一 API 內）
-        df_prev = df[df["date"] < trade_date.strftime("%Y-%m-%d")].sort_values("date")
+        df_prev = (
+            df_sid[df_sid["date"] < trade_date.strftime("%Y-%m-%d")]
+            .sort_values("date")
+        )
+
         prev_close = (
             df_prev.iloc[-1]["close"]
             if not df_prev.empty and pd.notna(df_prev.iloc[-1]["close"])
