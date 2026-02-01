@@ -401,32 +401,58 @@ def fetch_top10_volume_from_twse(trade_date: dt.date) -> list[str]:
     )
 
     return top10_ids
-
-
 def render_stock_table_html(df: pd.DataFrame):
     st.markdown(
         """
         <style>
         .stock-table {
             width: 100%;
-            border-collapse: collapse;
-            font-size: 18px;
-        }
-        .stock-table th {
-            background-color: #f4f6f8;
-            padding: 10px;
-            text-align: center;
+            border-collapse: separate;
+            border-spacing: 0;
             font-size: 16px;
-            border-bottom: 1px solid #ddd;
+            background: #ffffff;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 8px 24px rgba(0,0,0,.12);
         }
-        .stock-table td {
+
+        .stock-table thead th {
+            background: linear-gradient(180deg, #2c2c2c, #1f1f1f);
+            color: #ffffff;
+            padding: 12px 10px;
+            text-align: center;
+            font-size: 15px;
+            letter-spacing: .5px;
+        }
+
+        .stock-table tbody td {
             padding: 10px;
             text-align: right;
             border-bottom: 1px solid #eee;
+            color: #222;
         }
+
+        .stock-table tbody tr:hover {
+            background-color: #f6f8fa;
+        }
+
+        /* 股票代碼、名稱置中 */
         .stock-table td:nth-child(1),
         .stock-table td:nth-child(2) {
             text-align: center;
+            font-weight: 600;
+        }
+
+        /* 成交量、成交金額弱化 */
+        .stock-table td:nth-last-child(1),
+        .stock-table td:nth-last-child(2) {
+            color: #555;
+            font-size: 14px;
+        }
+
+        /* 收盤價預設黑色 */
+        .price {
+            color: #000;
             font-weight: 600;
         }
         </style>
@@ -441,8 +467,11 @@ def render_stock_table_html(df: pd.DataFrame):
 
     for _, row in df.iterrows():
         html += "<tr>"
-        for v in row:
-            html += f"<td>{v}</td>"
+        for col, v in row.items():
+            if col == "收盤":
+                html += f"<td class='price'>{v}</td>"
+            else:
+                html += f"<td>{v}</td>"
         html += "</tr>"
 
     html += "</tbody></table>"
