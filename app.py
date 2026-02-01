@@ -738,16 +738,16 @@ def render_tab_stock_futures(trade_date: dt.date):
 
     render_stock_table_html(df_view)
 
-        rows.append({
-            "股票代碼": sid,
-            "股票名稱": r.get("stock_name", ""),
-            "開盤": r["open"],
-            "最高": r["max"],
-            "最低": r["min"],
-            "收盤": r["close"],
-            "成交量": "-" if pd.isna(vol) else f"{int(vol // 10000):,} 萬",
-            "成交金額": "-" if pd.isna(amt) else f"{int(amt // 1_000_000):,} 百萬",
-        })
+    rows.append({
+        "股票代碼": sid,
+        "股票名稱": r.get("stock_name", ""),
+        "開盤": r["open"],
+        "最高": r["max"],
+        "最低": r["min"],
+        "收盤": r["close"],
+        "成交量": "-" if pd.isna(vol) else f"{int(vol // 10000):,} 萬",
+        "成交金額": "-" if pd.isna(amt) else f"{int(amt // 1_000_000):,} 百萬",
+    })
 
     if not rows:
         st.warning("⚠️ FinMind 無法取得對應個股資料")
