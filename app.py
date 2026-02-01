@@ -789,9 +789,18 @@ def render_tab_stock_futures(trade_date: dt.date):
 
         if prev_close:
             diff_pct = (close_price - prev_close) / prev_close * 100
-            close_display = f"{close_price:.2f} ({diff_pct:+.2f}%)"
+
+            # ✅ 判斷顏色
+            color = "#FF3B30" if diff_pct > 0 else "#34C759" if diff_pct < 0 else "#000000"
+
+            close_display = (
+                f"<span style='color:{color}; font-weight:600;'>"
+                f"{close_price:.2f} ({diff_pct:+.2f}%)"
+                f"</span>"
+            )
         else:
             close_display = f"{close_price:.2f}"
+
             
         rows.append({
             "股票代碼": sid,
