@@ -705,7 +705,7 @@ def render_tab_stock_futures(trade_date: dt.date):
 
     st.markdown("### ⬤ TWSE 成交量 TOP10 股票")
 
-    if not top10_ids:
+    if top10_ids is None or (hasattr(top10_ids, "empty") and top10_ids.empty):
         st.warning("⚠️ TWSE 無法取得成交量排行")
         return
 
@@ -744,12 +744,10 @@ def render_tab_stock_futures(trade_date: dt.date):
 
     render_stock_table_html(pd.DataFrame(rows))
 
-
     if df_top10.empty:
         st.warning("⚠️ TWSE 無法取得成交量資料")
     else:
         st.write(df_top10["股票代碼"].tolist())
-        
 
     if not rows:
         st.warning("⚠️ 查詢日無任何個股資料")
