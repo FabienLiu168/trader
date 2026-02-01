@@ -721,8 +721,22 @@ def render_tab_stock_futures(trade_date: dt.date):
 
         r = df_day.iloc[0]
 
-        vol = pd.to_numeric(r.get("Trading_Volume"), errors="coerce")
-        amt = pd.to_numeric(r.get("Trading_money"), errors="coerce")
+    # ✅ 強制格式化顯示單位（最保險）
+    df_view = pd.DataFrame(rows)
+
+    df_view["成交量"] = (
+        df_view["成交量"]
+        if df_view["成交量"].dtype == object
+        else df_view["成交量"].apply(lambda x: f"{int(x/10000):,} 萬")
+    )
+
+    df_view["成交金額"] = (
+        df_view["成交金額"]
+        if df_view["成交金額"].dtype == object
+        else df_view["成交金額"].apply(lambda x: f"{int(x/1_000_000):,} 百萬")
+    )
+
+    render_stock_table_html(df_view)
 
         rows.append({
             "股票代碼": sid,
