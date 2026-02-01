@@ -901,7 +901,7 @@ if not is_trading_day(trade_date):
     st.warning("📅 非交易日")
     st.stop()
 
-tab1, tab2 = st.tabs(["📈 期權大盤", "📊 個股期貨"])
+tab1, tab2 = st.tabs(["📈 期權趨勢", "📊 個股期貨"])
 
 with tab1:
     render_tab_option_market(trade_date)
