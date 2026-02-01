@@ -798,11 +798,11 @@ def render_tab_stock_futures(trade_date: dt.date):
     df_view = pd.DataFrame(rows)
 
     df_view["成交量"] = df_view["成交量"].apply(
-        lambda x: f"{int(x / 1000000):,} 萬" if pd.notna(x) else "-"
+        lambda x: f"{int(x / 1000000):,} 千" if pd.notna(x) else "-"
     )
 
     df_view["成交金額"] = df_view["成交金額"].apply(
-        lambda x: f"{int(x / 1_000_000):,} 百萬" if pd.notna(x) else "-"
+        lambda x: f"{int(x / 1_000_000):,} M" if pd.notna(x) else "-"
     )
 
     # 5️⃣ 只畫這一份（不要再用 rows）
