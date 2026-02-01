@@ -63,9 +63,9 @@ st.markdown(
         justify-content:space-between;
     }
 
-    .kpi-title{ font-size:1.2rem;opacity:.85;color:#000000 }
-    .kpi-value{ font-size:1.7rem;font-weight:500;line-height:1.5;color:#000000 }
-    .kpi-sub{ font-size:1.0rem;opacity:.65;line-height:1.5;color:#000000}
+    .kpi-title{ font-size:1.2rem;opacity:.85 }
+    .kpi-value{ font-size:1.7rem;font-weight:500;line-height:1.5 }
+    .kpi-sub{ font-size:1.0rem;opacity:.65;line-height:1.5}
 
     /* date_input 標題文字 */
     div[data-testid="stDateInput"] label {
@@ -119,8 +119,9 @@ button[data-baseweb="tab"][aria-selected="true"] > div {
 
 /* Hover 效果 */
 button[data-baseweb="tab"]:hover {
-  background-color: #4A557E !important;
+  background-color: #1a1a1a !important;
 }
+
 
     .bull{color:#FF3B30}
     .bear{color:#34C759}
@@ -191,28 +192,6 @@ def fetch_single_stock_daily(stock_id: str, trade_date: dt.date):
         start_date=(trade_date - dt.timedelta(days=3)).strftime("%Y-%m-%d"),
         end_date=trade_date.strftime("%Y-%m-%d"),
     )
-@st.cache_data(ttl=600, show_spinner=False)
-def fetch_multi_stock_daily(stock_ids: list[str], trade_date: dt.date):
-    """
-    一次抓多檔股票日資料（避免 N 次 HTTP）
-    """
-    dfs = []
-    start = (trade_date - dt.timedelta(days=3)).strftime("%Y-%m-%d")
-    end = trade_date.strftime("%Y-%m-%d")
-
-    for sid in stock_ids:
-        df = finmind_get(
-            dataset="TaiwanStockPrice",
-            data_id=sid,
-            start_date=start,
-            end_date=end,
-        )
-        if not df.empty:
-            df["stock_id"] = sid
-            dfs.append(df)
-
-    return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
-
 
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> list[str]:
@@ -422,58 +401,32 @@ def fetch_top10_volume_from_twse(trade_date: dt.date) -> list[str]:
     )
 
     return top10_ids
+
+
 def render_stock_table_html(df: pd.DataFrame):
     st.markdown(
         """
         <style>
         .stock-table {
             width: 100%;
-            border-collapse: separate;
-            border-spacing: 0;
-            font-size: 16px;
-            background: #ffffff;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 8px 24px rgba(0,0,0,.12);
+            border-collapse: collapse;
+            font-size: 18px;
         }
-
-        .stock-table thead th {
-            background: linear-gradient(180deg, #2c2c2c, #1f1f1f);
-            color: #ffffff;
-            padding: 12px 10px;
+        .stock-table th {
+            background-color: #f4f6f8;
+            padding: 10px;
             text-align: center;
-            font-size: 15px;
-            letter-spacing: .5px;
+            font-size: 16px;
+            border-bottom: 1px solid #ddd;
         }
-
-        .stock-table tbody td {
+        .stock-table td {
             padding: 10px;
             text-align: right;
             border-bottom: 1px solid #eee;
-            color: #111;
         }
-
-        .stock-table tbody tr:hover {
-            background-color: #f6f8fa;
-        }
-
-        /* 股票代碼、名稱置中 */
         .stock-table td:nth-child(1),
         .stock-table td:nth-child(2) {
             text-align: center;
-            font-weight: 600;
-        }
-
-        /* 成交量、成交金額弱化 */
-        .stock-table td:nth-last-child(1),
-        .stock-table td:nth-last-child(2) {
-            color: #555;
-            font-size: 14px;
-        }
-
-        /* 收盤價預設黑色 */
-        .price {
-            color: #000;
             font-weight: 600;
         }
         </style>
@@ -488,24 +441,13 @@ def render_stock_table_html(df: pd.DataFrame):
 
     for _, row in df.iterrows():
         html += "<tr>"
-        for col, v in row.items():
-
-            # ✅【第二點】收盤價漲跌顏色（只在顯示層）
-            if col == "收盤" and "開盤" in df.columns:
-                try:
-                    color = "#FF3B30" if float(row["收盤"]) > float(row["開盤"]) else "#34C759"
-                except:
-                    color = "#000000"
-
-                html += f"<td style='color:{color};font-weight:700'>{v}</td>"
-
-            else:
-                html += f"<td>{v}</td>"
-
+        for v in row:
+            html += f"<td>{v}</td>"
         html += "</tr>"
 
     html += "</tbody></table>"
     st.markdown(html, unsafe_allow_html=True)
+
 
 # =========================
 # 第一模組：期權大盤
@@ -758,108 +700,56 @@ def render_tab_option_market(trade_date: dt.date):
 # 第二模組：個股期貨（測試版）
 # =========================
 def render_tab_stock_futures(trade_date: dt.date):
-
-    # 1️⃣ 先拿原始 Top10（可能是 list 或 DataFrame）
-    top10_raw = fetch_top10_by_volume_twse_csv(trade_date)
-
-    if top10_raw is None or (hasattr(top10_raw, "empty") and top10_raw.empty):
-        st.warning("⚠️ 查詢日無成交量資料")
-        return
-
-    # 2️⃣ 強制轉成股票代碼 list（關鍵）
-    top10_list = (
-        top10_raw[["股票代碼", "股票名稱"]]
-        .astype(str)
-        .to_dict("records")
-        if isinstance(top10_raw, pd.DataFrame)
-        else [{"股票代碼": sid, "股票名稱": ""} for sid in top10_raw]
-    )
-
-    # ✅ 一次抓完所有 Top10 股票日資料
-    stock_ids = [x["股票代碼"] for x in top10_list]
-    df_all_stock = fetch_multi_stock_daily(stock_ids, trade_date)
-
-    if df_all_stock.empty:
-        st.warning("⚠️ 查詢日無任何個股資料")
-        return
-
-    st.markdown("### ⬤ TWSE 成交量 TOP10 股票")
-    #st.write(top10_ids)
-
-    #if not top10_ids:
-    #    st.warning("⚠️ 無前十大股票")
-    #    return
     
-    # 3️⃣ 蒐集個股資料
+    top10_ids = fetch_top10_by_volume_twse_csv(trade_date)
+
+    st.write("📊 TWSE CSV 成交量 Top10 股票代碼：")
+    st.write(top10_ids)
+
+    if not top10_ids is None or top10_ids.empty:
+        st.warning("")
+        return
+
     rows = []
 
-    for item in top10_list:
-        sid = item["股票代碼"]
-        stock_name = item["股票名稱"]
+    for sid in top10_ids:
+        df = fetch_single_stock_daily(sid, trade_date)
+        df_day = df[df["date"] == trade_date.strftime("%Y-%m-%d")]
 
-        df_sid = df_all_stock[df_all_stock["stock_id"] == sid]
-        df_day = df_sid[df_sid["date"] == trade_date.strftime("%Y-%m-%d")]
-    
+        if df_day.empty:
+            continue
+
         r = df_day.iloc[0]
-        
-        # 取得前一交易日收盤價（同一 API 內）
-        df_prev = (
-            df_sid[df_sid["date"] < trade_date.strftime("%Y-%m-%d")]
-            .sort_values("date")
-        )
 
-        prev_close = (
-            df_prev.iloc[-1]["close"]
-            if not df_prev.empty and pd.notna(df_prev.iloc[-1]["close"])
-            else None
-        )
-
-        close_price = r["close"]
-
-        if prev_close:
-            diff_pct = (close_price - prev_close) / prev_close * 100
-
-            # ✅ 判斷顏色
-            color = "#FF3B30" if diff_pct > 0 else "#34C759" if diff_pct < 0 else "#000000"
-
-            close_display = (
-                f"<span style='color:{color}; font-weight:600;'>"
-                f"{close_price:.2f} ({diff_pct:+.2f}%)"
-                f"</span>"
-            )
-        else:
-            close_display = f"{close_price:.2f}"
-
-            
         rows.append({
             "股票代碼": sid,
-            "股票名稱": stock_name,   # ✅ 正確中文名稱
+            "股票名稱": r.get("stock_name", ""),
             "開盤": r["open"],
             "最高": r["max"],
             "最低": r["min"],
-            "收盤": close_display,
-            "成交量": r["Trading_Volume"],
-            "成交金額": r["Trading_money"],
+            "收盤": r["close"],
+            "成交量": f"{int(r['Trading_Volume'] / 10000):,} 萬",
+            "成交金額": f"{int(r['Trading_money'] / 1_000_000):,} 百萬",
         })
 
+    if not rows:
+        st.warning("⚠️ FinMind 無法取得對應個股資料")
+        return
+
+    render_stock_table_html(pd.DataFrame(rows))
+
+
+    if df_top10.empty:
+        st.warning("⚠️ TWSE 無法取得成交量資料")
+    else:
+        st.write(df_top10["股票代碼"].tolist())
+        
 
     if not rows:
         st.warning("⚠️ 查詢日無任何個股資料")
         return
 
-    # 4️⃣ ✅「畫面顯示前」統一轉單位（最重要）
-    df_view = pd.DataFrame(rows)
-
-    df_view["成交量"] = df_view["成交量"].apply(
-        lambda x: f"{int(x / 1000):,} " if pd.notna(x) else "-"
-    )
-
-    df_view["成交金額"] = df_view["成交金額"].apply(
-        lambda x: f"{int(x / 1_000_000):,} M" if pd.notna(x) else "-"
-    )
-
-    # 5️⃣ 只畫這一份（不要再用 rows）
-    render_stock_table_html(df_view)
+    render_stock_table_html(pd.DataFrame(rows))
 
 
 # =========================
