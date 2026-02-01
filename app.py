@@ -7,8 +7,8 @@ import requests
 import pandas as pd
 import streamlit as st
 import io
-#import asyncio
-#import aiohttp
+import asyncio
+import aiohttp
 
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -183,7 +183,21 @@ def finmind_get(dataset, data_id, start_date, end_date):
         return pd.DataFrame()
 
     return pd.DataFrame(j.get("data", []))
+async def finmind_get_async(session, dataset, data_id, start_date, end_date):
+    params = {
+        "dataset": dataset,
+        "start_date": start_date,
+        "end_date": end_date,
+        "token": FINMIND_TOKEN,
+    }
+    if data_id:
+        params["data_id"] = data_id
 
+    async with session.get(FINMIND_API, params=params, timeout=30) as resp:
+        j = await resp.json()
+        if j.get("status") != 200:
+            return pd.DataFrame()
+        return pd.DataFrame(j.get("data", []))
 
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_single_stock_daily(stock_id: str, trade_date: dt.date):
@@ -193,27 +207,40 @@ def fetch_single_stock_daily(stock_id: str, trade_date: dt.date):
         start_date=(trade_date - dt.timedelta(days=3)).strftime("%Y-%m-%d"),
         end_date=trade_date.strftime("%Y-%m-%d"),
     )
+
 @st.cache_data(ttl=600, show_spinner=False)
-def fetch_multi_stock_daily(stock_ids: list[str], trade_date: dt.date):
-    """
-    一次抓多檔股票日資料（避免 N 次 HTTP）
-    """
-    dfs = []
-    start = (trade_date - dt.timedelta(days=3)).strftime("%Y-%m-%d")
-    end = trade_date.strftime("%Y-%m-%d")
+def fetch_multi_stock_daily_async(stock_ids: list[str], trade_date: dt.date):
 
-    for sid in stock_ids:
-        df = finmind_get(
-            dataset="TaiwanStockPrice",
-            data_id=sid,
-            start_date=start,
-            end_date=end,
-        )
-        if not df.empty:
-            df["stock_id"] = sid
-            dfs.append(df)
+    async def runner():
+        start = (trade_date - dt.timedelta(days=3)).strftime("%Y-%m-%d")
+        end = trade_date.strftime("%Y-%m-%d")
 
-    return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+        async with aiohttp.ClientSession(
+            connector=aiohttp.TCPConnector(limit=20)
+        ) as session:
+
+            tasks = [
+                finmind_get_async(
+                    session,
+                    "TaiwanStockPrice",
+                    sid,
+                    start,
+                    end,
+                )
+                for sid in stock_ids
+            ]
+
+            dfs = await asyncio.gather(*tasks)
+
+        out = []
+        for sid, df in zip(stock_ids, dfs):
+            if not df.empty:
+                df["stock_id"] = sid
+                out.append(df)
+
+        return pd.concat(out, ignore_index=True) if out else pd.DataFrame()
+
+    return asyncio.run(runner())
 
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -779,7 +806,7 @@ def render_tab_stock_futures(trade_date: dt.date):
 
     # ✅ 一次抓完所有 Top10 股票日資料
     stock_ids = [x["股票代碼"] for x in top10_list]
-    df_all_stock = fetch_multi_stock_daily(stock_ids, trade_date)
+    df_all_stock = fetch_multi_stock_daily_async(stock_ids, trade_date)
 
     if df_all_stock.empty:
         st.warning("⚠️ 查詢日無任何個股資料")
