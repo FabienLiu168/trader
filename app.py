@@ -119,7 +119,7 @@ button[data-baseweb="tab"][aria-selected="true"] > div {
 
 /* Hover 效果 */
 button[data-baseweb="tab"]:hover {
-  background-color: #1a1a1a !important;
+  background-color: #4A557E !important;
 }
 
 
