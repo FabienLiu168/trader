@@ -700,26 +700,32 @@ def render_tab_option_market(trade_date: dt.date):
 # 第二模組：個股期貨（測試版）
 # =========================
 def render_tab_stock_futures(trade_date: dt.date):
-    
+
     top10_ids = fetch_top10_by_volume_twse_csv(trade_date)
 
-    st.markdown("### ⬤ TWSE成交量TOP10股票")
-    st.write(top10_ids)
+    st.markdown("### ⬤ TWSE 成交量 TOP10 股票")
 
-    if not top10_ids is None or top10_ids.empty:
-        st.warning("")
+    if not top10_ids:
+        st.warning("⚠️ TWSE 無法取得成交量排行")
         return
 
     rows = []
 
     for sid in top10_ids:
         df = fetch_single_stock_daily(sid, trade_date)
+
+        if df.empty or "date" not in df.columns:
+            continue
+
         df_day = df[df["date"] == trade_date.strftime("%Y-%m-%d")]
 
         if df_day.empty:
             continue
 
         r = df_day.iloc[0]
+
+        vol = r.get("Trading_Volume")
+        amt = r.get("Trading_money")
 
         rows.append({
             "股票代碼": sid,
@@ -728,8 +734,8 @@ def render_tab_stock_futures(trade_date: dt.date):
             "最高": r["max"],
             "最低": r["min"],
             "收盤": r["close"],
-            "成交量": f"{int(r['Trading_Volume'] / 10000):,} 萬",
-            "成交金額": f"{int(r['Trading_money'] / 1_000_000):,} 百萬",
+            "成交量": "-" if pd.isna(vol) else f"{int(vol / 10000):,} 萬",
+            "成交金額": "-" if pd.isna(amt) else f"{int(amt / 1_000_000):,} 百萬",
         })
 
     if not rows:
