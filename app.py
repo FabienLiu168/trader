@@ -709,10 +709,12 @@ def render_tab_stock_futures(trade_date: dt.date):
         return
 
     # 2️⃣ 強制轉成股票代碼 list（關鍵）
-    top10_ids = (
-        top10_raw["股票代碼"].astype(str).tolist()
+    top10_list = (
+        top10_raw[["股票代碼", "股票名稱"]]
+        .astype(str)
+        .to_dict("records")
         if isinstance(top10_raw, pd.DataFrame)
-        else list(top10_raw)
+        else [{"股票代碼": sid, "股票名稱": ""} for sid in top10_raw]
     )
 
     st.markdown("### ⬤ TWSE 成交量 TOP10 股票")
@@ -725,9 +727,11 @@ def render_tab_stock_futures(trade_date: dt.date):
     # 3️⃣ 蒐集個股資料
     rows = []
 
-    for sid in top10_ids:
-        df = fetch_single_stock_daily(sid, trade_date)
+    for item in top10_list:
+        sid = item["股票代碼"]
+        stock_name = item["股票名稱"]
 
+        df = fetch_single_stock_daily(sid, trade_date)
         if df.empty or "date" not in df.columns:
             continue
 
@@ -739,7 +743,7 @@ def render_tab_stock_futures(trade_date: dt.date):
 
         rows.append({
             "股票代碼": sid,
-            "股票名稱": r.get("stock_name", ""),
+            "股票名稱": stock_name,   # ✅ 正確中文名稱
             "開盤": r["open"],
             "最高": r["max"],
             "最低": r["min"],
@@ -747,6 +751,7 @@ def render_tab_stock_futures(trade_date: dt.date):
             "成交量": r["Trading_Volume"],
             "成交金額": r["Trading_money"],
         })
+
 
     if not rows:
         st.warning("⚠️ 查詢日無任何個股資料")
