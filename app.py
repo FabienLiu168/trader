@@ -721,6 +721,9 @@ def render_tab_stock_futures(trade_date: dt.date):
 
         r = df_day.iloc[0]
 
+        vol = pd.to_numeric(r.get("Trading_Volume"), errors="coerce")
+        amt = pd.to_numeric(r.get("Trading_money"), errors="coerce")
+
         rows.append({
             "股票代碼": sid,
             "股票名稱": r.get("stock_name", ""),
@@ -728,8 +731,8 @@ def render_tab_stock_futures(trade_date: dt.date):
             "最高": r["max"],
             "最低": r["min"],
             "收盤": r["close"],
-            "成交量": f"{int(r['Trading_Volume'] / 10000):,} 萬",
-            "成交金額": f"{int(r['Trading_money'] / 1_000_000):,} 百萬",
+            "成交量": "-" if pd.isna(vol) else f"{int(vol // 10000):,} 萬",
+            "成交金額": "-" if pd.isna(amt) else f"{int(amt // 1_000_000):,} 百萬",
         })
 
     if not rows:
