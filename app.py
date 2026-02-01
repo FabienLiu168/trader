@@ -703,7 +703,8 @@ def render_tab_stock_futures(trade_date: dt.date):
     
     top10_ids = fetch_top10_by_volume_twse_csv(trade_date)
 
-    st.write("📊 TWSE CSV 成交量 Top10 股票代碼：")
+    #st.write("📊 TWSE CSV 成交量 Top10 股票代碼：")
+    st.markdown("## 📊 TWSE CSV 成交量 Top10 股票代碼：")
     st.write(top10_ids)
 
     if not top10_ids is None or top10_ids.empty:
