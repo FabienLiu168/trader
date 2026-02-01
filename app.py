@@ -7,7 +7,8 @@ import requests
 import pandas as pd
 import streamlit as st
 import io
-
+import asyncio
+import aiohttp
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
