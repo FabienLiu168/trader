@@ -738,21 +738,7 @@ def render_tab_stock_futures(trade_date: dt.date):
             "成交金額": "-" if pd.isna(amt) else f"{int(amt / 1_000_000):,} 百萬",
         })
 
-    if not rows:
-        st.warning("⚠️ FinMind 無法取得對應個股資料")
-        return
-
     #render_stock_table_html(pd.DataFrame(rows))
-
-    if df_top10.empty:
-        st.warning("⚠️ TWSE 無法取得成交量資料")
-    else:
-        st.write(df_top10["股票代碼"].tolist())
-
-    if not rows:
-        st.warning("⚠️ 查詢日無任何個股資料")
-        return
-
     render_stock_table_html(pd.DataFrame(rows))
 
 # =========================
