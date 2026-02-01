@@ -468,15 +468,23 @@ def render_stock_table_html(df: pd.DataFrame):
     for _, row in df.iterrows():
         html += "<tr>"
         for col, v in row.items():
-            if col == "收盤":
-                html += f"<td class='price'>{v}</td>"
+
+            # ✅【第二點】收盤價漲跌顏色（只在顯示層）
+            if col == "收盤" and "開盤" in df.columns:
+                try:
+                    color = "#FF3B30" if float(row["收盤"]) > float(row["開盤"]) else "#34C759"
+                except:
+                    color = "#000000"
+
+                html += f"<td style='color:{color};font-weight:700'>{v}</td>"
+
             else:
                 html += f"<td>{v}</td>"
+
         html += "</tr>"
 
     html += "</tbody></table>"
     st.markdown(html, unsafe_allow_html=True)
-
 
 # =========================
 # 第一模組：期權大盤
