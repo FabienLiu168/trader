@@ -742,7 +742,7 @@ def render_tab_stock_futures(trade_date: dt.date):
         st.warning("⚠️ FinMind 無法取得對應個股資料")
         return
 
-    render_stock_table_html(pd.DataFrame(rows))
+    #render_stock_table_html(pd.DataFrame(rows))
 
     if df_top10.empty:
         st.warning("⚠️ TWSE 無法取得成交量資料")
