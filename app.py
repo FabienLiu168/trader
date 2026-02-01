@@ -122,7 +122,6 @@ button[data-baseweb="tab"]:hover {
   background-color: #4A557E !important;
 }
 
-
     .bull{color:#FF3B30}
     .bear{color:#34C759}
     .neut{color:#000000}
@@ -429,7 +428,7 @@ def render_stock_table_html(df: pd.DataFrame):
             padding: 10px;
             text-align: right;
             border-bottom: 1px solid #eee;
-            color: #222;
+            color: #333;
         }
 
         .stock-table tbody tr:hover {
