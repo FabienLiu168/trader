@@ -64,7 +64,7 @@ st.markdown(
     }
 
     .kpi-title{ font-size:1.2rem;opacity:.85 }
-    .kpi-value{ font-size:1.7rem;font-weight:500;line-height:1.5 }
+    .kpi-value{ font-size:1.7rem;font-weight:500;line-height:1.5;color:#000000 }
     .kpi-sub{ font-size:1.0rem;opacity:.65;line-height:1.5}
 
     /* date_input 標題文字 */
