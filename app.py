@@ -700,22 +700,38 @@ def render_tab_option_market(trade_date: dt.date):
 # 第二模組：個股期貨（測試版）
 # =========================
 def render_tab_stock_futures(trade_date: dt.date):
-    
-    top10_ids = fetch_top10_by_volume_twse_csv(trade_date)
 
-    st.markdown("### ⬤ TWSE成交量TOP10股票")
-    st.write(top10_ids)
+    # 1️⃣ 先拿原始 Top10（可能是 list 或 DataFrame）
+    top10_raw = fetch_top10_by_volume_twse_csv(trade_date)
 
-    if not top10_ids is None or top10_ids.empty:
-        st.warning("")
+    if top10_raw is None or (hasattr(top10_raw, "empty") and top10_raw.empty):
+        st.warning("⚠️ 查詢日無成交量資料")
         return
 
+    # 2️⃣ 強制轉成股票代碼 list（關鍵）
+    top10_ids = (
+        top10_raw["股票代碼"].astype(str).tolist()
+        if isinstance(top10_raw, pd.DataFrame)
+        else list(top10_raw)
+    )
+
+    st.markdown("### ⬤ TWSE 成交量 TOP10 股票")
+    st.write(top10_ids)
+
+    if not top10_ids:
+        st.warning("⚠️ 無前十大股票")
+        return
+
+    # 3️⃣ 蒐集個股資料
     rows = []
 
     for sid in top10_ids:
         df = fetch_single_stock_daily(sid, trade_date)
-        df_day = df[df["date"] == trade_date.strftime("%Y-%m-%d")]
 
+        if df.empty or "date" not in df.columns:
+            continue
+
+        df_day = df[df["date"] == trade_date.strftime("%Y-%m-%d")]
         if df_day.empty:
             continue
 
@@ -728,20 +744,29 @@ def render_tab_stock_futures(trade_date: dt.date):
             "最高": r["max"],
             "最低": r["min"],
             "收盤": r["close"],
-            "成交量": f"{int(r['Trading_Volume'] / 10000):,} 萬",
-            "成交金額": f"{int(r['Trading_money'] / 1_000_000):,} 百萬",
+            "成交量": r["Trading_Volume"],
+            "成交金額": r["Trading_money"],
         })
 
-    if df_top10.empty:
-        st.warning("⚠️ TWSE 無法取得成交量資料")
-    else:
-        st.write(df_top10["股票代碼"].tolist())
-        
     if not rows:
         st.warning("⚠️ 查詢日無任何個股資料")
         return
 
-    render_stock_table_html(pd.DataFrame(rows))
+    # 4️⃣ ✅「畫面顯示前」統一轉單位（最重要）
+    df_view = pd.DataFrame(rows)
+
+    df_view["成交量"] = df_view["成交量"].apply(
+        lambda x: f"{int(x / 10000):,} 萬" if pd.notna(x) else "-"
+    )
+
+    df_view["成交金額"] = df_view["成交金額"].apply(
+        lambda x: f"{int(x / 1_000_000):,} 百萬" if pd.notna(x) else "-"
+    )
+
+    # 5️⃣ 只畫這一份（不要再用 rows）
+    render_stock_table_html(df_view)
+
+
 # =========================
 # 主流程
 # =========================
