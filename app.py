@@ -428,7 +428,7 @@ def render_stock_table_html(df: pd.DataFrame):
             padding: 10px;
             text-align: right;
             border-bottom: 1px solid #eee;
-            color: #333;
+            color: #717;
         }
 
         .stock-table tbody tr:hover {
