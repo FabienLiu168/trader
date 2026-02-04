@@ -388,7 +388,6 @@ def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
             "收盤": p["close"],
             "成交量": p["Trading_Volume"],
             "成交金額": p["Trading_money"],
-            "分點": branch_link,   # ✅ 新欄位
         })
 
     return pd.DataFrame(rows)
@@ -879,6 +878,7 @@ def render_tab_stock_futures(trade_date: dt.date):
             "收盤": close_display,
             "成交量": r["Trading_Volume"],
             "成交金額": r["Trading_money"],
+            "分點": branch_link,   # ✅ 正確位置
         })
 
 
