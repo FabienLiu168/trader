@@ -97,7 +97,7 @@ st.markdown(
         font-size:var(--font-title);
     }
     .kpi-value{ 
-        font-size:var(--font-value)
+        font-size:var(--font-value);
         line-height: 1.4;
         }
     .kpi-sub{ 
