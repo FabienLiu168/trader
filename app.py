@@ -595,7 +595,7 @@ def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
     # 標準化欄位
     df = df.rename(columns={
         "代號": "stock_id",
-        "股名": "stock_name",
+        "股票名稱": "stock_name",
         "成交股數": "volume",
         "成交金額": "amount",
         "開盤價": "open",
@@ -1047,7 +1047,7 @@ def render_tab_stock_futures(trade_date: dt.date):
 
     # 2️⃣ 強制轉成股票代碼 list（關鍵）
     top20_list = (
-        top20_raw[["代碼", "股名"]]
+        top20_raw[["代碼", "股票名稱"]]
         .astype(str)
         .to_dict("records")
         if isinstance(top20_raw, pd.DataFrame)
