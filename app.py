@@ -142,6 +142,42 @@ st.markdown(
 # =========================
 def is_trading_day(d: dt.date) -> bool:
     return d.weekday() < 5
+@st.cache_data(ttl=600, show_spinner=False)
+def get_latest_trading_date(max_lookback: int = 10) -> dt.date:
+    """
+    安全取得最近交易日：
+    - FINMIND_TOKEN 有 → 用 FinMind 驗證
+    - 沒 token / API 掛 → 直接 fallback 今天
+    """
+    today = dt.date.today()
+
+    # 沒 token 直接退回今天（避免整個 app 掛掉）
+    if not FINMIND_TOKEN:
+        return today
+
+    for i in range(max_lookback):
+        d = today - dt.timedelta(days=i)
+
+        # 跳過週末
+        if d.weekday() >= 5:
+            continue
+
+        try:
+            df = finmind_get(
+                dataset="TaiwanStockPrice",
+                data_id="2330",  # 流動性最高，當探針
+                start_date=d.strftime("%Y-%m-%d"),
+                end_date=d.strftime("%Y-%m-%d"),
+            )
+        except Exception:
+            continue
+
+        if not df.empty:
+            return d
+
+    # 最差情況保底
+    return today
+
 
 def clamp(v, lo, hi):
     return max(lo, min(hi, v))
@@ -213,8 +249,8 @@ def fetch_multi_stock_daily(stock_ids: list[str], trade_date: dt.date):
     return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
 
-@st.cache_data(ttl=600, show_spinner=False)
-def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> list[str]:
+#@st.cache_data(ttl=600, show_spinner=False)
+#def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> list[str]:
     """
     使用 TWSE 官方 CSV，取得成交量 Top20 股票代碼
     """
