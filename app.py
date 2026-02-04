@@ -323,7 +323,12 @@ def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
             verify=False   # ✅ 關閉 SSL 驗證（關鍵）
         )
 
-        r.encoding = "big5"
+        content = r.content.decode("big5", errors="ignore")
+
+        lines = [
+            line for line in content.split("\n")
+            if line.startswith('"') and len(line.split('","')) >= 16
+        ]
     except Exception as e:
         st.error(f"❌ TWSE CSV 下載失敗：{e}")
         return pd.DataFrame()
@@ -387,7 +392,7 @@ def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
 
         p = df_day.iloc[0]
 
-
+        stock_name = str(r["stock_name"]).strip()
         rows.append({
             "股票代碼": r["stock_id"],
             "股票名稱": r["stock_name"],
