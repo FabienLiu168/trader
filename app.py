@@ -709,6 +709,33 @@ def fetch_top20_volume_from_twse(trade_date: dt.date) -> list[str]:
     )
 
     return top20_ids
+
+def format_stock_cell(row: dict, col: dict):
+    key = col["key"]
+    v = row.get(key)
+
+    if col.get("formatter") == "price_change":
+        open_p = row.get("open")
+        close_p = row.get("close")
+        if open_p and close_p:
+            diff = (close_p - open_p) / open_p * 100
+            color = "#FF3B30" if diff > 0 else "#34C759" if diff < 0 else "#000000"
+            return (
+                f"<span style='color:{color};font-weight:600'>"
+                f"{close_p:.2f} ({diff:+.2f}%)"
+                f"</span>"
+            )
+        return f"{close_p:.2f}" if close_p else "-"
+
+    if col.get("formatter") == "volume_k":
+        return f"{int(v / 1000):,} K" if v else "-"
+
+    if col.get("formatter") == "amount_m":
+        return f"{int(v / 1_000_000):,} M" if v else "-"
+
+    return v if v is not None else "-"
+
+
 def render_stock_table_html(df: pd.DataFrame):
     st.markdown(
         """
@@ -793,13 +820,14 @@ def render_stock_table_html(df: pd.DataFrame):
     )
 
     html = "<table class='stock-table'><thead><tr>"
-    for col in df.columns:
+    for col in STOCK_TABLE_COLUMNS:
         html += f"<th>{col}</th>"
-    html += "</tr></thead><tbody>"
+    html += f"<th>{col['label']}</th>"
 
     for _, row in df.iterrows():
         html += "<tr>"
-        for col, v in row.items():
+        for col in STOCK_TABLE_COLUMNS:
+            
 
             # ✅【第二點】收盤價漲跌顏色（只在顯示層）
             if col == "收盤" and "開盤" in df.columns:
@@ -811,7 +839,7 @@ def render_stock_table_html(df: pd.DataFrame):
                 html += f"<td style='color:{color};font-weight:700'>{v}</td>"
 
             else:
-                html += f"<td>{v}</td>"
+                html += f"<td>{cell}</td>"
 
         html += "</tr>"
 
@@ -1029,6 +1057,16 @@ def render_tab_option_market(trade_date: dt.date):
 # =========================
 # 第二模組：個股期貨（測試版）
 # =========================
+# 第二模組｜股票表格欄位設定（可擴充）
+STOCK_TABLE_COLUMNS = [
+    {"key": "stock_id", "label": "股票代碼"},
+    {"key": "stock_name", "label": "股票名稱"},
+    {"key": "close", "label": "收盤", "formatter": "price_change"},
+    {"key": "volume", "label": "成交量", "formatter": "volume_k"},
+    {"key": "amount", "label": "成交金額", "formatter": "amount_m"},
+    {"key": "branch", "label": "券商分點"},
+]
+
 st.caption("📱 手機可左右滑動表格查看完整數據")
 def render_tab_stock_futures(trade_date: dt.date):
 
@@ -1112,17 +1150,14 @@ def render_tab_stock_futures(trade_date: dt.date):
 
             
         rows.append({
-            "股票代碼": sid,
-            "股票名稱": stock_name,   # ✅ 正確中文名稱
-            "開盤": r["open"],
-            "最高": r["max"],
-            "最低": r["min"],
-            "收盤": close_display,
-            "成交量": r["Trading_Volume"],
-            "成交金額": r["Trading_money"],
-            "券商分點": branch_link,   # ✅ 正確位置
+            "stock_id": sid,
+            "stock_name": stock_name,
+            "open": r["open"],          # 保留，給 formatter 用
+            "close": r["close"],
+            "volume": r["Trading_Volume"],
+            "amount": r["Trading_money"],
+            "branch": branch_link,
         })
-
 
     if not rows:
         st.warning("⚠️ 查詢日無任何個股資料")
