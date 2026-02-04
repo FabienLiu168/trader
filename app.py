@@ -775,6 +775,33 @@ def render_stock_table_html(df: pd.DataFrame):
 # 第一模組：期權大盤
 # =========================
 def render_tab_option_market(trade_date: dt.date):
+    # ===============================
+    # ✅ KPI 所有變數預設值（防炸彈）
+    # ===============================
+    fut_price = 0.0
+    prev_close = None
+    prev_put_wall = None
+    prev_call_wall = None
+    prev_spot_confirm = None
+    prev_final_state = None
+
+    # ===== 期貨主力資料 =====
+    df_day_all = fetch_position_for_trade_date(trade_date)
+    if df_day_all.empty:
+        st.error("❌ 無期貨結算資料")
+        return
+    
+    main_row = pick_main_contract_position(df_day_all, trade_date)
+    
+    settle = main_row.get("settlement_price")
+    close = main_row.get("close")
+    
+    if settle not in (None, "", 0) and pd.notna(settle):
+        fut_price = float(settle)
+    elif close not in (None, "", 0) and pd.notna(close):
+        fut_price = float(close)
+    
+    prev_close = get_prev_trading_close(trade_date)
 
     @st.cache_data(ttl=600, show_spinner=False)
     def fetch_position_for_trade_date(trade_date: dt.date):
@@ -1014,52 +1041,6 @@ def render_tab_option_market(trade_date: dt.date):
             """,
             unsafe_allow_html=True,
         )
-
-
-
-    # --- 卡片 5：總體狀態（最重要） ---
-    state_color = "#FF3B30" if "偏多" in final_state else "#34C759" if "偏空" in final_state else "#000000"
-    with c5:
-        st.markdown(
-            f"""
-            <div class='kpi-card'>
-                <div class='kpi-title'>總體狀態</div>
-                <div class='kpi-value' style='color:{state_color}'>
-                    {final_state}
-                </div>
-                <div class='kpi-sub'>三合一判斷</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    # ===== 取資料 =====
-    df_day_all = fetch_position_for_trade_date(trade_date)
-    if df_day_all.empty:
-        st.error("❌ 無期貨結算資料")
-        return
-
-    main_row = pick_main_contract_position(df_day_all, trade_date)
-    # ===============================
-    # ✅ KPI 會用到的資料（一定要先定義）
-    # ===============================
-    
-    # 期貨價格（安全取值）
-    settle = main_row.get("settlement_price")
-    close = main_row.get("close")
-    
-    if settle not in (None, "", 0) and pd.notna(settle):
-        fut_price = float(settle)
-    elif close not in (None, "", 0) and pd.notna(close):
-        fut_price = float(close)
-    else:
-        fut_price = 0.0
-    
-    # 昨日收盤 / 結算價（可能為 None，但一定要先宣告）
-    prev_close = get_prev_trading_close(trade_date)
-
-    #fut_price = float(main_row["close"])
-    #prev_close = get_prev_trading_close(trade_date)
 
     price_diff = pct_diff = None
     price_color = "#000000"
