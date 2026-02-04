@@ -526,7 +526,7 @@ def fetch_multi_stock_daily(stock_ids: list[str], trade_date: dt.date):
     df = pd.read_csv(io.StringIO("\n".join(lines)))
     df.columns = df.columns.str.strip()
 
-    # 統一欄位股票
+    # 統一欄位名稱
     code_col = "證券代號"
     vol_col = "成交股數"
 
@@ -594,8 +594,8 @@ def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
 
     # 標準化欄位
     df = df.rename(columns={
-        "代號": "stock_id",
-        "股票名稱": "stock_name",
+        "證券代號": "stock_id",
+        "證券名稱": "stock_name",
         "成交股數": "volume",
         "成交金額": "amount",
         "開盤價": "open",
@@ -604,30 +604,6 @@ def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
         "收盤價": "close",
     })
 
-    # === 欄位保底處理（避免 KeyError） ===
-    COLUMN_ALIAS = {
-
-    # 股票代碼
-    "證券代號": "stock_id",
-    "代號": "stock_id",
-
-    # 股票名稱
-    "股票名稱": "stock_name",
-    "證券名稱": "stock_name",
-
-    # 成交量
-    "成交股數": "volume",
-    "成交量": "volume",
-    "成交數量": "volume",
-
-    # 成交金額
-    "成交金額": "amount",
-    }
-    
-    for src, dst in COLUMN_ALIAS.items():
-        if src in df.columns and dst not in df.columns:
-            df = df.rename(columns={src: dst})
-    
     # === 3️⃣ 數值清洗 ===
     for col in ["volume", "amount", "open", "high", "low", "close"]:
         df[col] = (
@@ -638,17 +614,7 @@ def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
         )
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # === 最終保底：確認必要欄位存在 ===
-    required_cols = ["stock_id", "volume"]
-    missing = [c for c in required_cols if c not in df.columns]
-    
-    if missing:
-        st.error(f"❌ TWSE CSV 缺少必要欄位：{missing}")
-        st.write("實際欄位：", df.columns.tolist())
-        return pd.DataFrame()
-    
-    df = df.dropna(subset=required_cols)
-
+    df = df.dropna(subset=["stock_id", "volume"])
 
     # === 4️⃣ 成交量排序，取 Top20 ===
     top20 = (
@@ -671,19 +637,17 @@ def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
 
         p = df_day.iloc[0]
 
+        stock_name = str(r["stock_name"]).strip()
         rows.append({
-        -    "代碼": r["stock_id"],
-        -    "股名": r["stock_name"],
-        +    "代碼": r["stock_id"],
-        +    "股名": r["stock_name"],
-             "開盤": p["open"],
-             "最高": p["max"],
-             "最低": p["min"],
-             "收盤": p["close"],
-             "成交量": p["Trading_Volume"],
-             "成交金額": p["Trading_money"],
+            "股票代碼": r["stock_id"],
+            "股票名稱": r["stock_name"],
+            "開盤": p["open"],
+            "最高": p["max"],
+            "最低": p["min"],
+            "收盤": p["close"],
+            "成交量": p["Trading_Volume"],
+            "成交金額": p["Trading_money"],
         })
-
 
     return pd.DataFrame(rows)
 
@@ -745,33 +709,6 @@ def fetch_top20_volume_from_twse(trade_date: dt.date) -> list[str]:
     )
 
     return top20_ids
-
-def format_stock_cell(row: dict, col: dict):
-    key = col["key"]
-    v = row.get(key)
-
-    if col.get("formatter") == "price_change":
-        open_p = row.get("open")
-        close_p = row.get("close")
-        if open_p is not None and close_p is not None:
-            diff = (close_p - open_p) / open_p * 100
-            color = "#FF3B30" if diff > 0 else "#34C759" if diff < 0 else "#000000"
-            return (
-                f"<span style='color:{color};font-weight:600'>"
-                f"{close_p:.2f} ({diff:+.2f}%)"
-                f"</span>"
-            )
-        return f"{close_p:.2f}" if close_p else "-"
-
-    if col.get("formatter") == "volume_k":
-        return f"{int(v / 1000):,} K" if v else "-"
-
-    if col.get("formatter") == "amount_m":
-        return f"{int(v / 1_000_000):,} M" if v else "-"
-
-    return v if v is not None else "-"
-
-
 def render_stock_table_html(df: pd.DataFrame):
     st.markdown(
         """
@@ -786,6 +723,7 @@ def render_stock_table_html(df: pd.DataFrame):
             overflow: hidden;
             box-shadow: 0 8px 24px rgba(0,0,0,.12);
         }
+
         .stock-table thead th {
             background: linear-gradient(180deg, #2c2c2c, #1f1f1f);
             color: #ffffff;
@@ -794,59 +732,91 @@ def render_stock_table_html(df: pd.DataFrame):
             font-size: 15px;
             letter-spacing: .5px;
         }
+
         .stock-table tbody td {
             padding: 10px;
             text-align: right;
             border-bottom: 1px solid #eee;
             color: #111;
         }
+
         .stock-table tbody tr:hover {
             background-color: #f6f8fa;
         }
+
+        /* 股票代碼、名稱置中 */
         .stock-table td:nth-child(1),
         .stock-table td:nth-child(2) {
             text-align: center;
             font-weight: 600;
         }
+
+        /* 成交量、成交金額弱化 */
+        .stock-table td:nth-last-child(2),
+        .stock-table td:nth-last-child(3) {
+            color: #555;
+            font-size: 14px;
+        }
+        /* 券商買賣超連結 */
         .stock-table td:last-child {
             text-align: center;
             font-size: 18px;
         }
+
+        /* 收盤價預設黑色 */
+        .price {
+            color: #000;
+            font-weight: 600;
+        }
+        
+        /* =========================
+           Stock Table RWD
+           ========================= */
         @media (max-width: 768px) {
           .stock-table {
             display: block;
             overflow-x: auto;
             white-space: nowrap;
           }
+
           .stock-table thead th,
           .stock-table tbody td {
             font-size: 13px;
             padding: 8px;
           }
         }
+
+        
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-    # ===== 表頭 =====
     html = "<table class='stock-table'><thead><tr>"
-    for col in STOCK_TABLE_COLUMNS:
-        html += f"<th>{col['label']}</th>"
+    for col in df.columns:
+        html += f"<th>{col}</th>"
     html += "</tr></thead><tbody>"
 
-    # ===== 表身 =====
     for _, row in df.iterrows():
-        row_dict = row.to_dict()
         html += "<tr>"
-        for col in STOCK_TABLE_COLUMNS:
-            cell_html = format_stock_cell(row_dict, col)
-            html += f"<td>{cell_html}</td>"
+        for col, v in row.items():
+
+            # ✅【第二點】收盤價漲跌顏色（只在顯示層）
+            if col == "收盤" and "開盤" in df.columns:
+                try:
+                    color = "#FF3B30" if float(row["收盤"]) > float(row["開盤"]) else "#34C759"
+                except:
+                    color = "#000000"
+
+                html += f"<td style='color:{color};font-weight:700'>{v}</td>"
+
+            else:
+                html += f"<td>{v}</td>"
+
         html += "</tr>"
 
     html += "</tbody></table>"
     st.markdown(html, unsafe_allow_html=True)
-
 
 # =========================
 # 第一模組：期權大盤
@@ -1059,16 +1029,6 @@ def render_tab_option_market(trade_date: dt.date):
 # =========================
 # 第二模組：個股期貨（測試版）
 # =========================
-# 第二模組｜股票表格欄位設定（可擴充）
-STOCK_TABLE_COLUMNS = [
-    {"key": "stock_id", "label": "代碼"},
-    {"key": "stock_name", "label": "股名"},
-    {"key": "close", "label": "收盤", "formatter": "price_change"},
-    {"key": "volume", "label": "成交量", "formatter": "volume_k"},
-    {"key": "amount", "label": "成交金額", "formatter": "amount_m"},
-    {"key": "branch", "label": "券商分點"},
-]
-
 st.caption("📱 手機可左右滑動表格查看完整數據")
 def render_tab_stock_futures(trade_date: dt.date):
 
@@ -1081,15 +1041,15 @@ def render_tab_stock_futures(trade_date: dt.date):
 
     # 2️⃣ 強制轉成股票代碼 list（關鍵）
     top20_list = (
-        top20_raw[["代碼", "股名"]]
+        top20_raw[["股票代碼", "股票名稱"]]
         .astype(str)
         .to_dict("records")
         if isinstance(top20_raw, pd.DataFrame)
-        else [{"代碼": sid, "股名": ""} for sid in top20_raw]
+        else [{"股票代碼": sid, "股票名稱": ""} for sid in top20_raw]
     )
 
     # ✅ 一次抓完所有 Top20 股票日資料
-    stock_ids = [x["代碼"] for x in top20_list]
+    stock_ids = [x["股票代碼"] for x in top20_list]
     df_all_stock = fetch_multi_stock_daily(stock_ids, trade_date)
 
     if df_all_stock.empty:
@@ -1099,12 +1059,16 @@ def render_tab_stock_futures(trade_date: dt.date):
     st.markdown("### ⬤ TWSE 成交量 TOP20 股票")
     #st.write(top20_ids)
 
+    #if not top20_ids:
+    #    st.warning("⚠️ 無前十大股票")
+    #    return
+    
     # 3️⃣ 蒐集個股資料
     rows = []
 
     for item in top20_list:
-        sid = item["代碼"]
-        stock_name = item["股名"]
+        sid = item["股票代碼"]
+        stock_name = item["股票名稱"]
 
         df_sid = df_all_stock[df_all_stock["stock_id"] == sid]
         df_day = df_sid[df_sid["date"] == trade_date.strftime("%Y-%m-%d")]
@@ -1148,21 +1112,36 @@ def render_tab_stock_futures(trade_date: dt.date):
 
             
         rows.append({
-            "stock_id": sid,
-            "stock_name": stock_name,
-            "open": r["open"],          # 保留，給 formatter 用
-            "close": r["close"],
-            "volume": r.get("Trading_Volume"),
-            "amount": r.get("Trading_money"),
-            "branch": branch_link,
+            "股票代碼": sid,
+            "股票名稱": stock_name,   # ✅ 正確中文名稱
+            "開盤": r["open"],
+            "最高": r["max"],
+            "最低": r["min"],
+            "收盤": close_display,
+            "成交量": r["Trading_Volume"],
+            "成交金額": r["Trading_money"],
+            "券商分點": branch_link,   # ✅ 正確位置
         })
+
 
     if not rows:
         st.warning("⚠️ 查詢日無任何個股資料")
         return
 
+    # 4️⃣ ✅「畫面顯示前」統一轉單位（最重要）
     df_view = pd.DataFrame(rows)
+
+    df_view["成交量"] = df_view["成交量"].apply(
+        lambda x: f"{int(x / 1000):,} " if pd.notna(x) else "-"
+    )
+
+    df_view["成交金額"] = df_view["成交金額"].apply(
+        lambda x: f"{int(x / 1_000_000):,} M" if pd.notna(x) else "-"
+    )
+
+    # 5️⃣ 只畫這一份（不要再用 rows）
     render_stock_table_html(df_view)
+
 
 # =========================
 # 主流程
