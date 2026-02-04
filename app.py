@@ -876,7 +876,7 @@ def render_tab_option_market(trade_date: dt.date):
     # 四大區塊｜專業操盤卡片
     # =========================
     st.markdown(
-        "<h2 class='fut-section-title'>📊 大盤結構分析（期貨 / 選擇權 / 現貨 / 綜合）</h2>",
+        "<h2 class='fut-section-title'>📊 大盤分析</h2>",
         unsafe_allow_html=True,
     )
     
