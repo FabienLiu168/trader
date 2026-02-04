@@ -1040,8 +1040,26 @@ def render_tab_option_market(trade_date: dt.date):
         return
 
     main_row = pick_main_contract_position(df_day_all, trade_date)
-    fut_price = float(main_row["close"])
+    # ===============================
+    # ✅ KPI 會用到的資料（一定要先定義）
+    # ===============================
+    
+    # 期貨價格（安全取值）
+    settle = main_row.get("settlement_price")
+    close = main_row.get("close")
+    
+    if settle not in (None, "", 0) and pd.notna(settle):
+        fut_price = float(settle)
+    elif close not in (None, "", 0) and pd.notna(close):
+        fut_price = float(close)
+    else:
+        fut_price = 0.0
+    
+    # 昨日收盤 / 結算價（可能為 None，但一定要先宣告）
     prev_close = get_prev_trading_close(trade_date)
+
+    #fut_price = float(main_row["close"])
+    #prev_close = get_prev_trading_close(trade_date)
 
     price_diff = pct_diff = None
     price_color = "#000000"
