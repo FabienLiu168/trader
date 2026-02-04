@@ -1163,20 +1163,8 @@ def render_tab_stock_futures(trade_date: dt.date):
         st.warning("⚠️ 查詢日無任何個股資料")
         return
 
-    # 4️⃣ ✅「畫面顯示前」統一轉單位（最重要）
     df_view = pd.DataFrame(rows)
-
-    df_view["成交量"] = df_view["成交量"].apply(
-        lambda x: f"{int(x / 1000):,} " if pd.notna(x) else "-"
-    )
-
-    df_view["成交金額"] = df_view["成交金額"].apply(
-        lambda x: f"{int(x / 1_000_000):,} M" if pd.notna(x) else "-"
-    )
-
-    # 5️⃣ 只畫這一份（不要再用 rows）
     render_stock_table_html(df_view)
-
 
 # =========================
 # 主流程
