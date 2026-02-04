@@ -999,15 +999,7 @@ def render_tab_option_market(trade_date: dt.date):
     # ==================================================
     # 🟦 4️⃣ 綜合評估卡片（最終決策）
     # ==================================================
-    final_trend = ""
-    if prev_final_state:
-        if final_state != prev_final_state:
-            final_trend = f"🔁 狀態變化：{prev_final_state} → {final_state}"
-        else:
-            final_trend = "⏸ 判斷延續"
-    else:
-        final_trend = "（昨日綜合無資料）"
-
+    final_trend = "（尚未取得昨日綜合判斷）"
     state_color = (
         "#FF3B30" if "偏多" in final_state
         else "#34C759" if "偏空" in final_state
