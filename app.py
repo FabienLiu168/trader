@@ -800,7 +800,7 @@ def render_tab_option_market(trade_date: dt.date):
     oi_today = fetch_fut_foreign_oi(trade_date)
     oi_prev = fetch_fut_foreign_oi(trade_date - dt.timedelta(days=1))
 
-        df_opt = fetch_option_latest(trade_date)
+    df_opt = fetch_option_latest(trade_date)
 
 
     if oi_today and oi_prev:
