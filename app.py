@@ -782,6 +782,25 @@ def render_tab_option_market(trade_date: dt.date):
     # === 外資 OI ===
     oi_today = fetch_fut_foreign_oi(trade_date)
     oi_prev = fetch_fut_foreign_oi(trade_date - dt.timedelta(days=1))
+        # === 選擇權資料（TXO，取最近一個交易日）===
+        @st.cache_data(ttl=600, show_spinner=False)
+        def fetch_option_latest(trade_date):
+            for i in range(1, 6):
+                d = trade_date - dt.timedelta(days=i)
+                if d.weekday() >= 5:
+                    continue
+                df = finmind_get(
+                    "TaiwanOptionDaily",
+                    "TXO",
+                    d.strftime("%Y-%m-%d"),
+                    d.strftime("%Y-%m-%d"),
+                )
+                if not df.empty:
+                    return df
+            return pd.DataFrame()
+
+        df_opt = fetch_option_latest(trade_date)
+
 
     if oi_today and oi_prev:
         fut_engine = fut_trend_engine(
