@@ -878,7 +878,7 @@ def render_tab_stock_futures(trade_date: dt.date):
             "收盤": close_display,
             "成交量": r["Trading_Volume"],
             "成交金額": r["Trading_money"],
-            "券商分點買賣超": branch_link,   # ✅ 正確位置
+            "券商分點": branch_link,   # ✅ 正確位置
         })
 
 
