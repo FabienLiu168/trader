@@ -750,7 +750,6 @@ def render_stock_table_html(df: pd.DataFrame):
             overflow: hidden;
             box-shadow: 0 8px 24px rgba(0,0,0,.12);
         }
-
         .stock-table thead th {
             background: linear-gradient(180deg, #2c2c2c, #1f1f1f);
             color: #ffffff;
@@ -759,92 +758,59 @@ def render_stock_table_html(df: pd.DataFrame):
             font-size: 15px;
             letter-spacing: .5px;
         }
-
         .stock-table tbody td {
             padding: 10px;
             text-align: right;
             border-bottom: 1px solid #eee;
             color: #111;
         }
-
         .stock-table tbody tr:hover {
             background-color: #f6f8fa;
         }
-
-        /* 股票代碼、名稱置中 */
         .stock-table td:nth-child(1),
         .stock-table td:nth-child(2) {
             text-align: center;
             font-weight: 600;
         }
-
-        /* 成交量、成交金額弱化 */
-        .stock-table td:nth-last-child(2),
-        .stock-table td:nth-last-child(3) {
-            color: #555;
-            font-size: 14px;
-        }
-        /* 券商買賣超連結 */
         .stock-table td:last-child {
             text-align: center;
             font-size: 18px;
         }
-
-        /* 收盤價預設黑色 */
-        .price {
-            color: #000;
-            font-weight: 600;
-        }
-        
-        /* =========================
-           Stock Table RWD
-           ========================= */
         @media (max-width: 768px) {
           .stock-table {
             display: block;
             overflow-x: auto;
             white-space: nowrap;
           }
-
           .stock-table thead th,
           .stock-table tbody td {
             font-size: 13px;
             padding: 8px;
           }
         }
-
-        
         </style>
         """,
         unsafe_allow_html=True,
     )
 
+    # ===== 表頭 =====
     html = "<table class='stock-table'><thead><tr>"
     for col in STOCK_TABLE_COLUMNS:
-        html += f"<th>{col}</th>"
-    html += f"<th>{col['label']}</th>"
+        html += f"<th>{col['label']}</th>"
+    html += "</tr></thead><tbody>"
 
+    # ===== 表身 =====
     for _, row in df.iterrows():
+        row_dict = row.to_dict()
         html += "<tr>"
         for col in STOCK_TABLE_COLUMNS:
-            
-
-            # ✅【第二點】收盤價漲跌顏色（只在顯示層）
-            if col == "收盤" and "開盤" in df.columns:
-                try:
-                    color = "#FF3B30" if float(row["收盤"]) > float(row["開盤"]) else "#34C759"
-                except:
-                    color = "#000000"
-
-                html += f"<td style='color:{color};font-weight:700'>{v}</td>"
-
-            else:
-                html += f"<td>{cell}</td>"
-
+            cell_html = format_stock_cell(row_dict, col)
+            html += f"<td>{cell_html}</td>"
         html += "</tr>"
 
     html += "</tbody></table>"
     st.markdown(html, unsafe_allow_html=True)
+
 
 # =========================
 # 第一模組：期權大盤
