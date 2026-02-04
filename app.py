@@ -24,6 +24,21 @@ APP_TITLE = "O'發哥操盤室"
 st.markdown(
     """
     <style>
+
+    /* =========================
+       KPI Card RWD Fix
+       ========================= */
+    @media (max-width: 768px) {
+      .kpi-card {
+        min-height: auto;
+        padding: 12px;
+      }
+
+      .kpi-value {
+        font-size: 1.3rem;
+      }
+    }
+
     /* =========================
    Global Design System
    ========================= */
