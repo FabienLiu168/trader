@@ -972,17 +972,7 @@ def render_tab_option_market(trade_date: dt.date):
     # ==================================================
     # 🟩 3️⃣ 現貨卡片（量 × 結構）
     # ==================================================
-    spot_trend = ""
-    if prev_spot_confirm is not None:
-        if spot_engine["confirm"] and not prev_spot_confirm:
-            spot_trend = "🟢 結構轉強"
-        elif not spot_engine["confirm"] and prev_spot_confirm:
-            spot_trend = "🔴 結構轉弱"
-        else:
-            spot_trend = "⏸ 結構延續"
-    else:
-        spot_trend = "（昨日現貨無資料）"
-
+    spot_trend = "（尚未取得昨日現貨確認）"
     spot_symbol = "✔" if spot_engine["confirm"] else "✖"
     spot_color = "#FF3B30" if spot_engine["confirm"] else "#34C759"
     
