@@ -498,7 +498,7 @@ def render_stock_table_html(df: pd.DataFrame):
             color: #555;
             font-size: 14px;
         }
-        /* 分點欄位置中 */
+        /* 券商買賣超連結 */
         .stock-table td:last-child {
             text-align: center;
             font-size: 18px;
@@ -878,7 +878,7 @@ def render_tab_stock_futures(trade_date: dt.date):
             "收盤": close_display,
             "成交量": r["Trading_Volume"],
             "成交金額": r["Trading_money"],
-            "分點": branch_link,   # ✅ 正確位置
+            "券商分點買賣超": branch_link,   # ✅ 正確位置
         })
 
 
