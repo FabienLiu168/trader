@@ -24,6 +24,28 @@ APP_TITLE = "O'發哥操盤室"
 st.markdown(
     """
     <style>
+    /* =========================
+   Global Design System
+   ========================= */
+    :root {
+      --font-title: 1.15rem;
+      --font-value: 1.6rem;
+      --font-sub: 0.9rem;
+      --space-xs: 6px;
+      --space-sm: 10px;
+      --space-md: 16px;
+      --space-lg: 24px;
+    }
+
+    /* 手機自動縮排與縮字 */
+    @media (max-width: 768px) {
+      :root {
+        --font-title: 1.0rem;
+        --font-value: 1.3rem;
+        --font-sub: 0.8rem;
+      }
+    }
+
     div[data-testid="stAppViewContainer"] > .main {
         padding-top: 3.5rem;
     }
@@ -52,20 +74,20 @@ st.markdown(
     }
 
     .kpi-card{
-        border:1px solid rgba(255,255,255,.12);
-        border-radius:14px;
-        padding:16px 18px;
-        background:#F4F6F5;
-        box-shadow:0 6px 22px rgba(0,0,0,.18);
-        min-height:140px;
-        display:flex;
-        flex-direction:column;
-        justify-content:space-between;
+    padding: var(--space-md);
+    min-height: 120px;
     }
 
-    .kpi-title{ font-size:1.2rem;opacity:.85;color:#000000 }
-    .kpi-value{ font-size:1.7rem;font-weight:500;line-height:1.5;color:#000000 }
-    .kpi-sub{ font-size:1.0rem;opacity:.65;line-height:1.5;color:#000000}
+    .kpi-title{ 
+        font-size:var(--font-title);
+    }
+    .kpi-value{ 
+        font-size:var(--font-value)
+        line-height: 1.4;
+        }
+    .kpi-sub{ 
+        font-size: var(--font-sub);
+    }
 
     /* date_input 標題文字 */
     div[data-testid="stDateInput"] label {
@@ -523,6 +545,25 @@ def render_stock_table_html(df: pd.DataFrame):
             color: #000;
             font-weight: 600;
         }
+        
+        /* =========================
+           Stock Table RWD
+           ========================= */
+        @media (max-width: 768px) {
+          .stock-table {
+            display: block;
+            overflow-x: auto;
+            white-space: nowrap;
+          }
+
+          .stock-table thead th,
+          .stock-table tbody td {
+            font-size: 13px;
+            padding: 8px;
+          }
+        }
+
+        
         </style>
         """,
         unsafe_allow_html=True,
@@ -647,7 +688,8 @@ def render_tab_option_market(trade_date: dt.date):
     mood = ai["direction_text"]
     cls = "bull" if mood == "偏多" else "bear" if mood == "偏空" else "neut"
 
-    c1, c2, c3, c4, c5 = st.columns([1.6, 1.6, 1.2, 1.2, 1.4])
+    c1, c2, =st.column(2)
+    c3, c4, c5 = st.columns(3)
 
     with c1:
         st.markdown(
@@ -804,6 +846,7 @@ def render_tab_option_market(trade_date: dt.date):
 # =========================
 # 第二模組：個股期貨（測試版）
 # =========================
+st.caption("📱 手機可左右滑動表格查看完整數據")
 def render_tab_stock_futures(trade_date: dt.date):
 
     # 1️⃣ 先拿原始 Top20（可能是 list 或 DataFrame）
