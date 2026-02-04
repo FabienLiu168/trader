@@ -142,33 +142,6 @@ st.markdown(
 # =========================
 def is_trading_day(d: dt.date) -> bool:
     return d.weekday() < 5
-@st.cache_data(ttl=600, show_spinner=False)
-def get_latest_trading_date(max_lookback: int = 10) -> dt.date:
-    """
-    回傳最近一個「FinMind 確實有交易資料」的日期
-    """
-    today = dt.date.today()
-
-    for i in range(max_lookback):
-        d = today - dt.timedelta(days=i)
-
-        # 先排除週末（加速）
-        if d.weekday() >= 5:
-            continue
-
-        # 用一檔流動性最高的股票驗證是否有資料
-        df = finmind_get(
-            dataset="TaiwanStockPrice",
-            data_id="2330",  # 台積電，幾乎不會缺資料
-            start_date=d.strftime("%Y-%m-%d"),
-            end_date=d.strftime("%Y-%m-%d"),
-        )
-
-        if not df.empty:
-            return d
-
-    # 保底（理論上不會用到）
-    return today
 
 def clamp(v, lo, hi):
     return max(lo, min(hi, v))
