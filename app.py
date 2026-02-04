@@ -19,7 +19,7 @@ st.set_page_config(
     layout="wide"
 )
 
-APP_TITLE = "O'發哥操盤室"ㄍ
+APP_TITLE = "O'發哥操盤室"
 
 st.markdown(
     """
