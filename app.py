@@ -79,6 +79,217 @@ def finmind_get(dataset, data_id, start_date, end_date):
     return pd.DataFrame(j.get("data", []))
 
 # =========================
+# 期權 / 現貨資料
+# =========================
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_option_latest(trade_date):
+    for i in range(1, 6):
+        d = trade_date - dt.timedelta(days=i)
+        if d.weekday() >= 5:
+            continue
+        df = finmind_get(
+            "TaiwanOptionDaily",
+            "TXO",
+            d.strftime("%Y-%m-%d"),
+            d.strftime("%Y-%m-%d"),
+        )
+        if not df.empty:
+            return df
+    return pd.DataFrame()
+
+def option_structure_engine(df_opt):
+    if df_opt is None or df_opt.empty:
+        return None
+
+    if "call_put" not in df_opt.columns:
+        return None
+
+    df = df_opt.copy()
+    df["cp"] = df["call_put"].str.lower()
+    df["strike"] = pd.to_numeric(df["strike_price"], errors="coerce")
+    df["oi"] = pd.to_numeric(df["open_interest"], errors="coerce")
+    df = df.dropna(subset=["cp", "strike", "oi"])
+
+    call = df[df["cp"] == "call"]
+    put = df[df["cp"] == "put"]
+    if call.empty or put.empty:
+        return None
+
+    return {
+        "call_wall": int(call.loc[call["oi"].idxmax(), "strike"]),
+        "put_wall": int(put.loc[put["oi"].idxmax(), "strike"]),
+        "dominant": "call" if call["oi"].sum() > put["oi"].sum() else "put",
+    }
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_index_confirm(trade_date):
+    df = finmind_get(
+        "TaiwanStockStatisticsOfOrderBookAndTrade",
+        None,
+        (trade_date - dt.timedelta(days=7)).strftime("%Y-%m-%d"),
+        trade_date.strftime("%Y-%m-%d"),
+    )
+    if df.empty:
+        return None
+
+    df = df.sort_values("date")
+    today = df.iloc[-1]
+
+    return {
+        "vol_today": today["Trading_Volume"],
+        "vol_ma5": df["Trading_Volume"].tail(5).mean(),
+        "up": today["Up_Count"],
+        "down": today["Down_Count"],
+    }
+
+def spot_confirm_engine(spot):
+    if not spot:
+        return {"confirm": False, "reason": "無資料"}
+
+    if spot["vol_today"] > spot["vol_ma5"] and spot["up"] > spot["down"]:
+        return {"confirm": True, "reason": "量增價揚"}
+
+    if spot["up"] < spot["down"]:
+        return {"confirm": False, "reason": "跌家數多"}
+
+    return {"confirm": False, "reason": "量能不足"}
+
+# =========================
+# 期貨 OI
+# =========================
+def fetch_fut_foreign_oi(trade_date):
+    df = finmind_get(
+        "TaiwanFuturesInstitutionalInvestors",
+        "TX",
+        trade_date.strftime("%Y-%m-%d"),
+        trade_date.strftime("%Y-%m-%d"),
+    )
+    if df.empty:
+        return None
+
+    df = df[df["institutional_investors"] == "Foreign_Investor"]
+    if df.empty:
+        return None
+
+    return float(df.iloc[0]["open_interest_net"])
+
+# =========================
+# KPI 引擎
+# =========================
+def fut_trend_engine(price_today, price_prev, oi_today, oi_prev):
+    price_diff = price_today - price_prev
+    oi_diff = oi_today - oi_prev
+
+    if price_diff > 0 and oi_diff > 0:
+        return "趨勢多", "bull", price_diff, oi_diff
+    if price_diff < 0 and oi_diff > 0:
+        return "趨勢空", "bear", price_diff, oi_diff
+    if oi_diff < 0:
+        return "震盪", "neut", price_diff, oi_diff
+    return "中性", "neut", price_diff, oi_diff
+
+def trend_engine(fut_dir, opt, spot):
+    if fut_dir == "趨勢多" and opt and opt["dominant"] == "put" and spot["confirm"]:
+        return "偏多可操作"
+    if fut_dir == "趨勢空" and opt and opt["dominant"] == "call" and spot["confirm"]:
+        return "偏空可操作"
+    return "觀望 / 區間"
+
+# =========================
+# 第一模組：KPI（已補昨天 vs 今天）
+# =========================
+def render_tab_option_market(trade_date):
+    prev_date = trade_date - dt.timedelta(days=1)
+
+    # === 期貨價格（用台積電當 proxy，避免整段太長）
+    df_price = finmind_get(
+        "TaiwanStockPrice",
+        "2330",
+        prev_date.strftime("%Y-%m-%d"),
+        trade_date.strftime("%Y-%m-%d"),
+    )
+    if len(df_price) < 2:
+        st.warning("期貨 Proxy 資料不足")
+        return
+
+    price_prev = df_price.iloc[-2]["close"]
+    price_today = df_price.iloc[-1]["close"]
+
+    oi_today = fetch_fut_foreign_oi(trade_date)
+    oi_prev = fetch_fut_foreign_oi(prev_date)
+
+    if oi_today is None or oi_prev is None:
+        st.warning("外資 OI 資料不足")
+        return
+
+    fut_dir, fut_bias, price_diff, oi_diff = fut_trend_engine(
+        price_today, price_prev, oi_today, oi_prev
+    )
+
+    # === 選擇權（今日 vs 昨日）
+    opt_today = option_structure_engine(fetch_option_latest(trade_date))
+    opt_prev = option_structure_engine(fetch_option_latest(prev_date))
+
+    opt_shift = "昨日無資料"
+    if opt_today and opt_prev:
+        opt_shift = (
+            f"Put {opt_today['put_wall']-opt_prev['put_wall']:+}｜"
+            f"Call {opt_today['call_wall']-opt_prev['call_wall']:+}"
+        )
+
+    # === 現貨（今日 vs 昨日）
+    spot_today = spot_confirm_engine(fetch_index_confirm(trade_date))
+    spot_prev = spot_confirm_engine(fetch_index_confirm(prev_date))
+
+    if spot_today["confirm"] and not spot_prev["confirm"]:
+        spot_trend = "🟢 結構轉強"
+    elif not spot_today["confirm"] and spot_prev["confirm"]:
+        spot_trend = "🔴 結構轉弱"
+    else:
+        spot_trend = "⏸ 結構延續"
+
+    final_today = trend_engine(fut_dir, opt_today, spot_today)
+    final_prev = trend_engine(fut_dir, opt_prev, spot_prev)
+
+    final_shift = (
+        f"{final_prev} → {final_today}"
+        if final_today != final_prev
+        else "狀態延續"
+    )
+
+    st.subheader("📊 大盤分析（昨日 vs 今日）")
+
+    c1, c2, c3, c4 = st.columns(4)
+
+    with c1:
+        st.metric(
+            "📈 期貨趨勢",
+            fut_dir,
+            f"價差 {price_diff:+.0f}｜OI {oi_diff:+,}"
+        )
+
+    with c2:
+        st.metric(
+            "🧩 選擇權防線",
+            f"{opt_today['put_wall']}–{opt_today['call_wall']}" if opt_today else "N/A",
+            opt_shift
+        )
+
+    with c3:
+        st.metric(
+            "📊 現貨確認",
+            "✔" if spot_today["confirm"] else "✖",
+            spot_trend
+        )
+
+    with c4:
+        st.metric(
+            "🧠 綜合評估",
+            final_today,
+            final_shift
+        )
+
+# =========================
 # 工具函式
 # =========================
 def is_trading_day(d: dt.date) -> bool:
@@ -233,5 +444,7 @@ if not is_trading_day(trade_date):
 
 tab1, tab2 = st.tabs(["📈 期權趨勢", "📊 個股期貨"])
 
+with tab1:
+    render_tab_option_market(trade_date)
 with tab2:
     render_tab_stock_futures(trade_date)
