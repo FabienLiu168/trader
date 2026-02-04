@@ -289,7 +289,16 @@ def render_tab_stock_futures(trade_date):
         st.warning("⚠️ 無成交量資料")
         return
     # ✅ 強制顯示前 20 大
-    df_view = df.head(20)
+    #df_view = df.head(20)
+    df_view = top20[["股票代碼", "股票名稱", "收盤", "成交量", "成交金額"]].copy()
+
+    # ✅ 新增「券商分點」超連結欄位
+    df_view["券商分點"] = df_view["股票代碼"].apply(
+        lambda sid: (
+            f"<a href='https://histock.tw/stock/branch.aspx?no={sid}' "
+            f"target='_blank' style='text-decoration:none;font-weight:700;'>🔗</a>"
+        )
+    )
     st.dataframe(df[["股票代碼", "股票名稱", "收盤", "成交量", "成交金額"]], use_container_width=True)
 
 # =========================
