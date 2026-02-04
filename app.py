@@ -323,6 +323,26 @@ def fetch_position_for_trade_date(trade_date: dt.date):
     df["trade_date"] = trade_date
     return df
     
+def pick_main_contract_position(df, trade_date):
+        x = df.copy()
+        x["ym"] = pd.to_numeric(x["contract_date"], errors="coerce")
+        target = trade_date.year * 100 + trade_date.month
+        cand = x[x["ym"] >= target]
+        return cand.sort_values("ym").iloc[0] if not cand.empty else x.sort_values("ym").iloc[-1]
+
+    def get_prev_trading_close(trade_date: dt.date, lookback_days=7):
+        for i in range(1, lookback_days + 1):
+            d = trade_date - dt.timedelta(days=i)
+            if d.weekday() >= 5:
+                continue
+            df = fetch_position_for_trade_date(d)
+            if not df.empty:
+                row = pick_main_contract_position(df, d)
+                settle = row.get("settlement_price")
+                close = row.get("close")
+                return float(settle) if settle not in (None, "", 0) else float(close or 0)
+        return None    
+        
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_index_confirm(trade_date: dt.date):
     """
@@ -816,26 +836,6 @@ def render_tab_option_market(trade_date: dt.date):
     
     prev_close = get_prev_trading_close(trade_date)
 
-    def pick_main_contract_position(df, trade_date):
-        x = df.copy()
-        x["ym"] = pd.to_numeric(x["contract_date"], errors="coerce")
-        target = trade_date.year * 100 + trade_date.month
-        cand = x[x["ym"] >= target]
-        return cand.sort_values("ym").iloc[0] if not cand.empty else x.sort_values("ym").iloc[-1]
-
-    def get_prev_trading_close(trade_date: dt.date, lookback_days=7):
-        for i in range(1, lookback_days + 1):
-            d = trade_date - dt.timedelta(days=i)
-            if d.weekday() >= 5:
-                continue
-            df = fetch_position_for_trade_date(d)
-            if not df.empty:
-                row = pick_main_contract_position(df, d)
-                settle = row.get("settlement_price")
-                close = row.get("close")
-                return float(settle) if settle not in (None, "", 0) else float(close or 0)
-        return None
-
     # === 外資 OI ===
     oi_today = fetch_fut_foreign_oi(trade_date)
     oi_prev = fetch_fut_foreign_oi(trade_date - dt.timedelta(days=1))
@@ -843,7 +843,7 @@ def render_tab_option_market(trade_date: dt.date):
     df_opt = fetch_option_latest(trade_date)
 
 
-    if oi_today and oi_prev:
+    if oi_today and oi_prev and prev_close is not None:
         fut_engine = fut_trend_engine(
             fut_price,
             prev_close,
@@ -1041,12 +1041,7 @@ def render_tab_option_market(trade_date: dt.date):
             unsafe_allow_html=True,
         )
 
-    price_diff = pct_diff = None
-    price_color = "#000000"
-    if prev_close:
-        price_diff = fut_price - prev_close
-        pct_diff = price_diff / prev_close * 100
-        price_color = "#FF3B30" if price_diff > 0 else "#34C759" if price_diff < 0 else "#000000"
+         price_color = "#FF3B30" if price_diff > 0 else "#34C759" if price_diff < 0 else "#000000"
 
 # =========================
 # 第二模組：個股期貨（測試版）
