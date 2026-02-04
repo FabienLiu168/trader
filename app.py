@@ -578,19 +578,26 @@ def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
         st.error(f"❌ TWSE CSV 下載失敗：{e}")
         return pd.DataFrame()
 
-    # === 2️⃣ 解析 CSV（只抓「每日收盤行情」那一段） ===
+    # === 2️⃣ 解析 CSV（只抓「每日收盤行情」那一段）===
+    content = r.content.decode("big5", errors="ignore")
+    
     lines = [
-        line for line in r.text.split("\n")
+        line for line in content.split("\n")
         if line.startswith('"') and len(line.split('","')) >= 16
     ]
-
+    
     if not lines:
         return pd.DataFrame()
+    
+    df = pd.read_csv(io.StringIO("\n".join(lines)))
+    
+    # ✅【防炸保險】確認關鍵欄位是否存在（在 rename 之前）
+    required_cols = {"證券代號", "成交股數"}
+    if not required_cols.issubset(df.columns):
+        st.error(f"❌ TWSE CSV 欄位解析失敗，實際欄位：{list(df.columns)}")
+        return pd.DataFrame()
 
-    df = pd.read_csv(
-        io.StringIO("\n".join(lines)),
-        header=0
-    )
+
 
     # 標準化欄位
     df = df.rename(columns={
