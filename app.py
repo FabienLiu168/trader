@@ -805,6 +805,8 @@ def render_tab_stock_futures(trade_date: dt.date):
 
         df_sid = df_all_stock[df_all_stock["stock_id"] == sid]
         df_day = df_sid[df_sid["date"] == trade_date.strftime("%Y-%m-%d")]
+        if df_day.empty:
+            continue
         r = df_day.iloc[0]
 
         branch_url = f"https://histock.tw/stock/branch.aspx?no={sid}"
