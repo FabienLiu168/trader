@@ -266,8 +266,6 @@ def option_structure_engine(df_opt):
     }
 
 
-
-
 def spot_confirm_engine(spot):
     if spot is None:
         return {"confirm": False, "reason": "無資料"}
@@ -322,27 +320,43 @@ def fetch_position_for_trade_date(trade_date: dt.date):
     df = df[df["trading_session"].astype(str) == "position"].copy()
     df["trade_date"] = trade_date
     return df
-    
+   
 def pick_main_contract_position(df, trade_date):
-        x = df.copy()
-        x["ym"] = pd.to_numeric(x["contract_date"], errors="coerce")
-        target = trade_date.year * 100 + trade_date.month
-        cand = x[x["ym"] >= target]
-        return cand.sort_values("ym").iloc[0] if not cand.empty else x.sort_values("ym").iloc[-1]
+    x = df.copy()
+    x["ym"] = pd.to_numeric(x["contract_date"], errors="coerce")
+    target = trade_date.year * 100 + trade_date.month
+    cand = x[x["ym"] >= target]
+    return (
+        cand.sort_values("ym").iloc[0]
+        if not cand.empty
+        else x.sort_values("ym").iloc[-1]
+    )
 
-    def get_prev_trading_close(trade_date: dt.date, lookback_days=7):
-        for i in range(1, lookback_days + 1):
-            d = trade_date - dt.timedelta(days=i)
-            if d.weekday() >= 5:
-                continue
-            df = fetch_position_for_trade_date(d)
-            if not df.empty:
-                row = pick_main_contract_position(df, d)
-                settle = row.get("settlement_price")
-                close = row.get("close")
-                return float(settle) if settle not in (None, "", 0) else float(close or 0)
-        return None    
-        
+
+def get_prev_trading_close(trade_date: dt.date, lookback_days=7):
+    for i in range(1, lookback_days + 1):
+        d = trade_date - dt.timedelta(days=i)
+        if d.weekday() >= 5:
+            continue
+
+        df = fetch_position_for_trade_date(d)
+        if df.empty:
+            continue
+
+        row = pick_main_contract_position(df, d)
+
+        settle = row.get("settlement_price")
+        close = row.get("close")
+
+        if settle not in (None, "", 0) and pd.notna(settle):
+            return float(settle)
+
+        if close not in (None, "", 0) and pd.notna(close):
+            return float(close)
+
+    return None
+
+
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_index_confirm(trade_date: dt.date):
     """
@@ -813,10 +827,6 @@ def render_tab_option_market(trade_date: dt.date):
     # ===============================
     fut_price = 0.0
     prev_close = None
-    prev_put_wall = None
-    prev_call_wall = None
-    prev_spot_confirm = None
-    prev_final_state = None
 
     # ===== 期貨主力資料 =====
     df_day_all = fetch_position_for_trade_date(trade_date)
@@ -892,7 +902,6 @@ def render_tab_option_market(trade_date: dt.date):
         price_diff = 0
 
     price_sign = "+" if price_diff > 0 else ""
-    price_color = "#FF3B30" if price_diff > 0 else "#34C759" if price_diff < 0 else "#000000"
     
     with c1:
         st.markdown(
