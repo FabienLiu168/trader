@@ -837,77 +837,181 @@ def render_tab_option_market(trade_date: dt.date):
     # === Step 4：三合一總控 ===
     final_state = trend_engine(fut_engine, opt_engine, spot_engine)
     # =========================
-    # KPI 區塊（新三合一引擎）
+    # 四大區塊｜專業操盤卡片
     # =========================
-    st.markdown("<h2 class='fut-section-title'>📈 台指期貨｜三合一趨勢判斷</h2>", unsafe_allow_html=True)
-    c1, c2, c3, c4, c5 = st.columns(5, gap="small")
+    st.markdown(
+        "<h2 class='fut-section-title'>📊 大盤結構分析（期貨 / 選擇權 / 現貨 / 綜合）</h2>",
+        unsafe_allow_html=True,
+    )
+    
+    c1, c2, c3, c4 = st.columns(4, gap="small")
+    
+    # ==================================================
+    # 🟥 1️⃣ 期貨卡片（價格 × 外資 OI）
+    # ==================================================
+    # === 期貨 OI 結構判斷（給人看的）===
+    oi_structure = ""
+    if fut_engine["direction"] == "趨勢多" and fut_engine["delta_oi"] > 0:
+        oi_structure = "🟢 價漲＋加碼（多方主導）"
+    elif fut_engine["direction"] == "趨勢空" and fut_engine["delta_oi"] > 0:
+        oi_structure = "🔴 價跌＋加碼（空方主導）"
+    elif fut_engine["delta_oi"] < 0:
+        oi_structure = "🟡 減碼中（可能進入整理）"
+    else:
+        oi_structure = "⚪ 結構中性"
 
-    # --- 卡片 1：期貨方向（外資 OI） ---
+    price_diff = fut_price - prev_close if prev_close else 0
+    price_sign = "+" if price_diff > 0 else ""
+    price_color = "#FF3B30" if price_diff > 0 else "#34C759" if price_diff < 0 else "#000000"
+    
     with c1:
         st.markdown(
             f"""
             <div class='kpi-card'>
-                <div class='kpi-title'>期貨方向</div>
+                <div class='kpi-title'>📈 期貨趨勢</div>
                 <div class='kpi-value {fut_engine['bias']}'>
                     {fut_engine['direction']}
                 </div>
-                <div class='kpi-sub'>外資 OI + 價格</div>
+                <div class='kpi-sub'>
+                    收盤 {fut_price:,.0f}
+                    <span style='color:{price_color}'>
+                        ({price_sign}{price_diff:,.0f})
+                    </span><br>
+                    外資 OI {fut_engine['delta_oi']:+,} 口<br>
+                    信心 {fut_engine['confidence']}%
+                </div>
+                <div class='kpi-sub' style='margin-top:6px; opacity:.75'>
+                    結構判讀：{oi_structure}
+                </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
+    
+    # ==================================================
+    # 🟨 2️⃣ 選擇權卡片（防線 × 壓力）
+    # ==================================================
+    opt_text = (
+        f"{opt_engine['put_wall']} – {opt_engine['call_wall']}"
+        if opt_engine else "資料不足"
+    )
 
-    # --- 卡片 2：外資 OI 變化 ---
-    oi_color = "#FF3B30" if fut_engine["delta_oi"] > 0 else "#34C759" if fut_engine["delta_oi"] < 0 else "#000000"
+    opt_shift = ""
+    if opt_engine and prev_put_wall is not None and prev_call_wall is not None:
+        if opt_engine["put_wall"] > prev_put_wall:
+            opt_shift += "🟢 支撐上移 "
+        elif opt_engine["put_wall"] < prev_put_wall:
+            opt_shift += "🔴 支撐下移 "
+    
+        if opt_engine["call_wall"] > prev_call_wall:
+            opt_shift += "| 🔴 壓力上移"
+        elif opt_engine["call_wall"] < prev_call_wall:
+            opt_shift += "| 🟢 壓力下移"
+    else:
+        opt_shift = "（昨日防線無資料）"
+        
+    opt_note = (
+        "多方防守（Put）" if opt_engine and opt_engine["dominant"] == "put"
+        else "空方防守（Call）" if opt_engine and opt_engine["dominant"] == "call"
+        else "防守中性"
+    )
+    
     with c2:
         st.markdown(
             f"""
             <div class='kpi-card'>
-                <div class='kpi-title'>外資 OI</div>
-                <div class='kpi-value' style='color:{oi_color}'>
-                    {fut_engine['delta_oi']:+,}
+                <div class='kpi-title'>🧩 選擇權防線</div>
+                <div class='kpi-value'>
+                    {opt_text}
                 </div>
-                <div class='kpi-sub'>信心 {fut_engine['confidence']}%</div>
+                <div class='kpi-sub'>
+                    {opt_note}<br>
+                    Put 支撐 / Call 壓力
+                </div>
+                <div class='kpi-sub' style='opacity:.75'>
+                    昨日比較：{ opt_shift }
+                </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
+    
+    # ==================================================
+    # 🟩 3️⃣ 現貨卡片（量 × 結構）
+    # ==================================================
+    spot_trend = ""
+    if prev_spot_confirm is not None:
+        if spot_engine["confirm"] and not prev_spot_confirm:
+            spot_trend = "🟢 結構轉強"
+        elif not spot_engine["confirm"] and prev_spot_confirm:
+            spot_trend = "🔴 結構轉弱"
+        else:
+            spot_trend = "⏸ 結構延續"
+    else:
+        spot_trend = "（昨日現貨無資料）"
 
-    # --- 卡片 3：選擇權防線 ---
-    opt_range_text = (
-        f"{opt_engine['put_wall']} – {opt_engine['call_wall']}"
-        if opt_engine else "資料不足"
-    )
+    spot_symbol = "✔" if spot_engine["confirm"] else "✖"
+    spot_color = "#FF3B30" if spot_engine["confirm"] else "#34C759"
+    
     with c3:
         st.markdown(
             f"""
             <div class='kpi-card'>
-                <div class='kpi-title'>選擇權防線</div>
-                <div class='kpi-value'>
-                    {opt_range_text}
+                <div class='kpi-title'>📊 現貨確認</div>
+                <div class='kpi-value' style='color:{spot_color}'>
+                    {spot_symbol}
                 </div>
-                <div class='kpi-sub'>Put 支撐 / Call 壓力</div>
+                <div class='kpi-sub'>
+                    {spot_engine['reason']}<br>
+                    量能 vs 結構
+                </div>
+                <div class='kpi-sub' style='opacity:.75'>
+                昨日比較：{ spot_trend }
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    
+    # ==================================================
+    # 🟦 4️⃣ 綜合評估卡片（最終決策）
+    # ==================================================
+    final_trend = ""
+    if prev_final_state:
+        if final_state != prev_final_state:
+            final_trend = f"🔁 狀態變化：{prev_final_state} → {final_state}"
+        else:
+            final_trend = "⏸ 判斷延續"
+    else:
+        final_trend = "（昨日綜合無資料）"
+
+    state_color = (
+        "#FF3B30" if "偏多" in final_state
+        else "#34C759" if "偏空" in final_state
+        else "#000000"
+    )
+    
+    with c4:
+        st.markdown(
+            f"""
+            <div class='kpi-card'>
+                <div class='kpi-title'>🧠 綜合評估</div>
+                <div class='kpi-value' style='color:{state_color}'>
+                    {final_state}
+                </div>
+                <div class='kpi-sub'>
+                    期貨 × 選擇權 × 現貨<br>
+                    綜合判斷
+                </div>
+                <div class='kpi-sub' style='opacity:.75'>
+                昨日比較：{ final_trend }
+                </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    # --- 卡片 4：現貨確認 ---
-    spot_symbol = "✔" if spot_engine["confirm"] else "✖"
-    spot_color = "#FF3B30" if spot_engine["confirm"] else "#34C759"
-    with c4:
-        st.markdown(
-            f"""
-            <div class='kpi-card'>
-                <div class='kpi-title'>現貨確認</div>
-                <div class='kpi-value' style='color:{spot_color}'>
-                    {spot_symbol}
-                </div>
-                <div class='kpi-sub'>{spot_engine['reason']}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+
 
     # --- 卡片 5：總體狀態（最重要） ---
     state_color = "#FF3B30" if "偏多" in final_state else "#34C759" if "偏空" in final_state else "#000000"
