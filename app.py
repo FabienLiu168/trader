@@ -260,7 +260,7 @@ def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> list[str]:
     )
 
     df = df.sort_values(vol_col, ascending=False)
-    return df[code_col].head(10).astype(str).tolist()
+    return df[code_col].head(20).astype(str).tolist()
 
 
 @st.cache_data(ttl=600, show_spinner=False)
