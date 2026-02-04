@@ -285,6 +285,11 @@ def fetch_top20_by_volume_twse_csv(trade_date):
 
 def render_tab_stock_futures(trade_date):
     df = fetch_top20_by_volume_twse_csv(trade_date)
+    if df.empty:
+        st.warning("⚠️ 無成交量資料")
+        return
+    # ✅ 強制顯示前 20 大
+    df_view = df.head(20)
     st.dataframe(df[["股票代碼", "股票名稱", "收盤", "成交量", "成交金額"]], use_container_width=True)
 
 # =========================
