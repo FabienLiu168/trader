@@ -942,20 +942,7 @@ def render_tab_option_market(trade_date: dt.date):
         if opt_engine else "資料不足"
     )
 
-    opt_shift = ""
-    if opt_engine and prev_put_wall is not None and prev_call_wall is not None:
-        if opt_engine["put_wall"] > prev_put_wall:
-            opt_shift += "🟢 支撐上移 "
-        elif opt_engine["put_wall"] < prev_put_wall:
-            opt_shift += "🔴 支撐下移 "
-    
-        if opt_engine["call_wall"] > prev_call_wall:
-            opt_shift += "| 🔴 壓力上移"
-        elif opt_engine["call_wall"] < prev_call_wall:
-            opt_shift += "| 🟢 壓力下移"
-    else:
-        opt_shift = "（昨日防線無資料）"
-        
+    opt_shift = "（尚未取得昨日選擇權防線）"        
     opt_note = (
         "多方防守（Put）" if opt_engine and opt_engine["dominant"] == "put"
         else "空方防守（Call）" if opt_engine and opt_engine["dominant"] == "call"
