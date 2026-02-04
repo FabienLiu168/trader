@@ -933,6 +933,8 @@ def render_tab_option_market(trade_date: dt.date):
 
     main_row = pick_main_contract_position(df_day_all, trade_date)
     prev_close = get_prev_trading_close(trade_date)
+    # ✅【補上這一行，錯誤就會消失】
+    fut_price = float(main_row["close"])
 
     price_diff = pct_diff = None
     price_color = "#000000"
