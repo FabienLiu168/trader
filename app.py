@@ -1050,8 +1050,6 @@ def render_tab_option_market(trade_date: dt.date):
             unsafe_allow_html=True,
         )
 
-         price_color = "#FF3B30" if price_diff > 0 else "#34C759" if price_diff < 0 else "#000000"
-
 # =========================
 # 第二模組：個股期貨（測試版）
 # =========================
