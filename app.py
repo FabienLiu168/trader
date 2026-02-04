@@ -604,6 +604,20 @@ def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
         "收盤價": "close",
     })
 
+    # === 欄位保底處理（避免 KeyError） ===
+    COLUMN_ALIAS = {
+        "證券代號": "stock_id",
+        "代號": "stock_id",
+        "股票名稱": "stock_name",
+        "證券名稱": "stock_name",
+        "成交股數": "volume",
+        "成交金額": "amount",
+    }
+    
+    for k, v in COLUMN_ALIAS.items():
+        if k in df.columns and v not in df.columns:
+            df = df.rename(columns={k: v})
+    
     # === 3️⃣ 數值清洗 ===
     for col in ["volume", "amount", "open", "high", "low", "close"]:
         df[col] = (
