@@ -377,11 +377,7 @@ def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
             continue
 
         p = df_day.iloc[0]
-        branch_url = f"https://histock.tw/stock/branch.aspx?no={sid}"
-        branch_link = (
-            f"<a href='{branch_url}' target='_blank' "
-            f"style='text-decoration:none;font-weight:700;'>🔗</a>"
-        )
+
 
         rows.append({
             "股票代碼": r["stock_id"],
@@ -837,8 +833,13 @@ def render_tab_stock_futures(trade_date: dt.date):
 
         df_sid = df_all_stock[df_all_stock["stock_id"] == sid]
         df_day = df_sid[df_sid["date"] == trade_date.strftime("%Y-%m-%d")]
-    
         r = df_day.iloc[0]
+
+        branch_url = f"https://histock.tw/stock/branch.aspx?no={sid}"
+        branch_link = (
+            f"<a href='{branch_url}' target='_blank' "
+            f"style='text-decoration:none;font-weight:700;'>🔗</a>"
+        )
         
         # 取得前一交易日收盤價（同一 API 內）
         df_prev = (
