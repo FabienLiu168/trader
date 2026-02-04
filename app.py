@@ -377,6 +377,12 @@ def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
             continue
 
         p = df_day.iloc[0]
+        branch_url = f"https://histock.tw/stock/branch.aspx?no={sid}"
+        branch_link = (
+            f"<a href='{branch_url}' target='_blank' "
+            f"style='text-decoration:none;font-weight:600;'>🔗</a>"
+        )
+
         rows.append({
             "股票代碼": r["stock_id"],
             "股票名稱": r["stock_name"],
@@ -386,6 +392,7 @@ def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
             "收盤": p["close"],
             "成交量": p["Trading_Volume"],
             "成交金額": p["Trading_money"],
+            "分點": branch_link,   # ✅ 新欄位
         })
 
     return pd.DataFrame(rows)
