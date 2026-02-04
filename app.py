@@ -606,12 +606,21 @@ def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
 
     # === 欄位保底處理（避免 KeyError） ===
     COLUMN_ALIAS = {
-        "證券代號": "stock_id",
-        "代號": "stock_id",
-        "股票名稱": "stock_name",
-        "證券名稱": "stock_name",
-        "成交股數": "volume",
-        "成交金額": "amount",
+    # 股票代碼
+    "證券代號": "stock_id",
+    "代號": "stock_id",
+
+    # 股票名稱
+    "股票名稱": "stock_name",
+    "證券名稱": "stock_name",
+
+    # 成交量
+    "成交股數": "volume",
+    "成交量": "volume",
+    "成交數量": "volume",
+
+    # 成交金額
+    "成交金額": "amount",
     }
     
     for k, v in COLUMN_ALIAS.items():
@@ -628,7 +637,17 @@ def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
         )
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    df = df.dropna(subset=["stock_id", "volume"])
+    # === 最終保底：確認必要欄位存在 ===
+    required_cols = ["stock_id", "volume"]
+    missing = [c for c in required_cols if c not in df.columns]
+    
+    if missing:
+        st.error(f"❌ TWSE CSV 缺少必要欄位：{missing}")
+        st.write("實際欄位：", df.columns.tolist())
+        return pd.DataFrame()
+    
+    df = df.dropna(subset=required_cols)
+
 
     # === 4️⃣ 成交量排序，取 Top20 ===
     top20 = (
