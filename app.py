@@ -15,11 +15,11 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # 基本設定
 # =========================
 st.set_page_config(
-    page_title="O'發哥操盤室",
+    page_title="大叔法歌交易室",
     layout="wide"
 )
 
-APP_TITLE = "O'發哥操盤室"
+APP_TITLE = "大叔法歌交易室"
 
 st.markdown(
     """
@@ -145,39 +145,30 @@ def is_trading_day(d: dt.date) -> bool:
 @st.cache_data(ttl=600, show_spinner=False)
 def get_latest_trading_date(max_lookback: int = 10) -> dt.date:
     """
-    安全取得最近交易日：
-    - FINMIND_TOKEN 有 → 用 FinMind 驗證
-    - 沒 token / API 掛 → 直接 fallback 今天
+    回傳最近一個「FinMind 確實有交易資料」的日期
     """
     today = dt.date.today()
-
-    # 沒 token 直接退回今天（避免整個 app 掛掉）
-    if not FINMIND_TOKEN:
-        return today
 
     for i in range(max_lookback):
         d = today - dt.timedelta(days=i)
 
-        # 跳過週末
+        # 先排除週末（加速）
         if d.weekday() >= 5:
             continue
 
-        try:
-            df = finmind_get(
-                dataset="TaiwanStockPrice",
-                data_id="2330",  # 流動性最高，當探針
-                start_date=d.strftime("%Y-%m-%d"),
-                end_date=d.strftime("%Y-%m-%d"),
-            )
-        except Exception:
-            continue
+        # 用一檔流動性最高的股票驗證是否有資料
+        df = finmind_get(
+            dataset="TaiwanStockPrice",
+            data_id="2330",  # 台積電，幾乎不會缺資料
+            start_date=d.strftime("%Y-%m-%d"),
+            end_date=d.strftime("%Y-%m-%d"),
+        )
 
         if not df.empty:
             return d
 
-    # 最差情況保底
+    # 保底（理論上不會用到）
     return today
-
 
 def clamp(v, lo, hi):
     return max(lo, min(hi, v))
@@ -249,10 +240,10 @@ def fetch_multi_stock_daily(stock_ids: list[str], trade_date: dt.date):
     return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
 
-#@st.cache_data(ttl=600, show_spinner=False)
-#def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> list[str]:
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> list[str]:
     """
-    使用 TWSE 官方 CSV，取得成交量 Top20 股票代碼
+    使用 TWSE 官方 CSV，取得成交量 Top10 股票代碼
     """
     import io
     import urllib3
@@ -296,13 +287,13 @@ def fetch_multi_stock_daily(stock_ids: list[str], trade_date: dt.date):
     )
 
     df = df.sort_values(vol_col, ascending=False)
-    return df[code_col].head(20).astype(str).tolist()
+    return df[code_col].head(10).astype(str).tolist()
 
 
 @st.cache_data(ttl=600, show_spinner=False)
-def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
+def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
     """
-    使用 TWSE 官方 CSV，取得「成交量 Top20 股票」，再用 FinMind 補齊股價資料
+    使用 TWSE 官方 CSV，取得「成交量 Top10 股票」，再用 FinMind 補齊股價資料
     """
 
     # === 1️⃣ TWSE 官方 CSV（最穩定） ===
@@ -323,12 +314,7 @@ def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
             verify=False   # ✅ 關閉 SSL 驗證（關鍵）
         )
 
-        content = r.content.decode("big5", errors="ignore")
-
-        lines = [
-            line for line in content.split("\n")
-            if line.startswith('"') and len(line.split('","')) >= 16
-        ]
+        r.encoding = "big5"
     except Exception as e:
         st.error(f"❌ TWSE CSV 下載失敗：{e}")
         return pd.DataFrame()
@@ -371,19 +357,19 @@ def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
 
     df = df.dropna(subset=["stock_id", "volume"])
 
-    # === 4️⃣ 成交量排序，取 Top20 ===
-    top20 = (
+    # === 4️⃣ 成交量排序，取 Top10 ===
+    top10 = (
         df.sort_values("volume", ascending=False)
-          .head(20)
+          .head(10)
           .copy()
     )
 
-    if top20.empty:
+    if top10.empty:
         return pd.DataFrame()
 
     # === 5️⃣ 用 FinMind 補齊資料（保證你後面邏輯一致） ===
     rows = []
-    for _, r in top20.iterrows():
+    for _, r in top10.iterrows():
         df_price = fetch_single_stock_daily(r["stock_id"], trade_date)
         df_day = df_price[df_price["date"] == trade_date.strftime("%Y-%m-%d")]
 
@@ -391,8 +377,6 @@ def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
             continue
 
         p = df_day.iloc[0]
-
-        stock_name = str(r["stock_name"]).strip()
         rows.append({
             "股票代碼": r["stock_id"],
             "股票名稱": r["stock_name"],
@@ -407,9 +391,9 @@ def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 @st.cache_data(ttl=600, show_spinner=False)
-def fetch_top20_volume_from_twse(trade_date: dt.date) -> list[str]:
+def fetch_top10_volume_from_twse(trade_date: dt.date) -> list[str]:
     """
-    從 TWSE 官方 JSON 取得『上市成交量 Top20 股票代碼』
+    從 TWSE 官方 JSON 取得『上市成交量 Top10 股票代碼』
     """
 
     # TWSE 使用民國年
@@ -457,13 +441,13 @@ def fetch_top20_volume_from_twse(trade_date: dt.date) -> list[str]:
     )
 
     # 依成交量排序取前 10
-    top20_ids = (
+    top10_ids = (
         df.sort_values("volume", ascending=False)
-          .head(20)["stock_id"]
+          .head(10)["stock_id"]
           .tolist()
     )
 
-    return top20_ids
+    return top10_ids
 def render_stock_table_html(df: pd.DataFrame):
     st.markdown(
         """
@@ -507,15 +491,10 @@ def render_stock_table_html(df: pd.DataFrame):
         }
 
         /* 成交量、成交金額弱化 */
-        .stock-table td:nth-last-child(2),
-        .stock-table td:nth-last-child(3) {
+        .stock-table td:nth-last-child(1),
+        .stock-table td:nth-last-child(2) {
             color: #555;
             font-size: 14px;
-        }
-        /* 券商買賣超連結 */
-        .stock-table td:last-child {
-            text-align: center;
-            font-size: 18px;
         }
 
         /* 收盤價預設黑色 */
@@ -806,55 +785,48 @@ def render_tab_option_market(trade_date: dt.date):
 # =========================
 def render_tab_stock_futures(trade_date: dt.date):
 
-    # 1️⃣ 先拿原始 Top20（可能是 list 或 DataFrame）
-    top20_raw = fetch_top20_by_volume_twse_csv(trade_date)
+    # 1️⃣ 先拿原始 Top10（可能是 list 或 DataFrame）
+    top10_raw = fetch_top10_by_volume_twse_csv(trade_date)
 
-    if top20_raw is None or (hasattr(top20_raw, "empty") and top20_raw.empty):
+    if top10_raw is None or (hasattr(top10_raw, "empty") and top10_raw.empty):
         st.warning("⚠️ 查詢日無成交量資料")
         return
 
     # 2️⃣ 強制轉成股票代碼 list（關鍵）
-    top20_list = (
-        top20_raw[["股票代碼", "股票名稱"]]
+    top10_list = (
+        top10_raw[["股票代碼", "股票名稱"]]
         .astype(str)
         .to_dict("records")
-        if isinstance(top20_raw, pd.DataFrame)
-        else [{"股票代碼": sid, "股票名稱": ""} for sid in top20_raw]
+        if isinstance(top10_raw, pd.DataFrame)
+        else [{"股票代碼": sid, "股票名稱": ""} for sid in top10_raw]
     )
 
-    # ✅ 一次抓完所有 Top20 股票日資料
-    stock_ids = [x["股票代碼"] for x in top20_list]
+    # ✅ 一次抓完所有 Top10 股票日資料
+    stock_ids = [x["股票代碼"] for x in top10_list]
     df_all_stock = fetch_multi_stock_daily(stock_ids, trade_date)
 
     if df_all_stock.empty:
         st.warning("⚠️ 查詢日無任何個股資料")
         return
 
-    st.markdown("### ⬤ TWSE 成交量 TOP20 股票")
-    #st.write(top20_ids)
+    st.markdown("### ⬤ TWSE 成交量 TOP10 股票")
+    #st.write(top10_ids)
 
-    #if not top20_ids:
+    #if not top10_ids:
     #    st.warning("⚠️ 無前十大股票")
     #    return
     
     # 3️⃣ 蒐集個股資料
     rows = []
 
-    for item in top20_list:
+    for item in top10_list:
         sid = item["股票代碼"]
         stock_name = item["股票名稱"]
 
         df_sid = df_all_stock[df_all_stock["stock_id"] == sid]
         df_day = df_sid[df_sid["date"] == trade_date.strftime("%Y-%m-%d")]
-        if df_day.empty:
-            continue
+    
         r = df_day.iloc[0]
-
-        branch_url = f"https://histock.tw/stock/branch.aspx?no={sid}"
-        branch_link = (
-            f"<a href='{branch_url}' target='_blank' "
-            f"style='text-decoration:none;font-weight:700;'>🔗</a>"
-        )
         
         # 取得前一交易日收盤價（同一 API 內）
         df_prev = (
@@ -894,7 +866,6 @@ def render_tab_stock_futures(trade_date: dt.date):
             "收盤": close_display,
             "成交量": r["Trading_Volume"],
             "成交金額": r["Trading_money"],
-            "券商分點": branch_link,   # ✅ 正確位置
         })
 
 
@@ -930,11 +901,10 @@ if not is_trading_day(trade_date):
     st.warning("📅 非交易日")
     st.stop()
 
-tab1, tab2 = st.tabs(["📈 期權趨勢", "📊 個股期貨"])
+tab1, tab2 = st.tabs(["📈 期權大盤", "📊 個股期貨"])
 
 with tab1:
     render_tab_option_market(trade_date)
 
 with tab2:
     render_tab_stock_futures(trade_date)
-
