@@ -221,15 +221,27 @@ def fut_trend_engine(fut_today, fut_prev, oi_today, oi_prev):
         "confidence": confidence,
     }
 
-
 def option_structure_engine(df_opt):
     if df_opt is None or df_opt.empty:
         return None
 
     df = df_opt.copy()
+
+    # === 欄位標準化（關鍵修正） ===
+    if "call_put" not in df.columns:
+        return None
+
+    df["cp"] = (
+        df["call_put"]
+        .astype(str)
+        .str.lower()
+        .map({"call": "call", "put": "put"})
+    )
+
     df["strike"] = pd.to_numeric(df["strike_price"], errors="coerce")
     df["oi"] = pd.to_numeric(df["open_interest"], errors="coerce")
-    df = df.dropna(subset=["strike", "oi"])
+
+    df = df.dropna(subset=["cp", "strike", "oi"])
 
     call = df[df["cp"] == "call"]
     put  = df[df["cp"] == "put"]
@@ -237,8 +249,8 @@ def option_structure_engine(df_opt):
     if call.empty or put.empty:
         return None
 
-    call_wall = int(call.loc[call["oi"].idxmax()]["strike"])
-    put_wall  = int(put.loc[put["oi"].idxmax()]["strike"])
+    call_wall = int(call.loc[call["oi"].idxmax(), "strike"])
+    put_wall  = int(put.loc[put["oi"].idxmax(), "strike"])
 
     dominant = "neutral"
     if call["oi"].sum() > put["oi"].sum():
@@ -252,6 +264,8 @@ def option_structure_engine(df_opt):
         "dominant": dominant,
         "range": (put_wall, call_wall),
     }
+
+
 
 
 def spot_confirm_engine(spot):
