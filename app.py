@@ -380,7 +380,7 @@ def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
         branch_url = f"https://histock.tw/stock/branch.aspx?no={sid}"
         branch_link = (
             f"<a href='{branch_url}' target='_blank' "
-            f"style='text-decoration:none;font-weight:600;'>🔗</a>"
+            f"style='text-decoration:none;font-weight:700;'>🔗</a>"
         )
 
         rows.append({
@@ -498,10 +498,15 @@ def render_stock_table_html(df: pd.DataFrame):
         }
 
         /* 成交量、成交金額弱化 */
-        .stock-table td:nth-last-child(1),
-        .stock-table td:nth-last-child(2) {
+        .stock-table td:nth-last-child(2),
+        .stock-table td:nth-last-child(3) {
             color: #555;
             font-size: 14px;
+        }
+        /* 分點欄位置中 */
+        .stock-table td:last-child {
+            text-align: center;
+            font-size: 18px;
         }
 
         /* 收盤價預設黑色 */
