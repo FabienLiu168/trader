@@ -860,7 +860,11 @@ def render_tab_option_market(trade_date: dt.date):
     else:
         oi_structure = "⚪ 結構中性"
 
-    price_diff = fut_price - prev_close if prev_close else 0
+    if prev_close is not None:
+        price_diff = fut_price - prev_close
+    else:
+        price_diff = 0
+
     price_sign = "+" if price_diff > 0 else ""
     price_color = "#FF3B30" if price_diff > 0 else "#34C759" if price_diff < 0 else "#000000"
     
