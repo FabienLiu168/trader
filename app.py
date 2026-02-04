@@ -802,95 +802,94 @@ def render_tab_option_market(trade_date: dt.date):
 
     # === Step 4：三合一總控 ===
     final_state = trend_engine(fut_engine, opt_engine, spot_engine)
-# =========================
-# KPI 區塊（新三合一引擎）
-# =========================
-st.markdown("<h2 class='fut-section-title'>📈 台指期貨｜三合一趨勢判斷</h2>", unsafe_allow_html=True)
-c1, c2, c3, c4, c5 = st.columns(5, gap="small")
+    # =========================
+    # KPI 區塊（新三合一引擎）
+    # =========================
+    st.markdown("<h2 class='fut-section-title'>📈 台指期貨｜三合一趨勢判斷</h2>", unsafe_allow_html=True)
+    c1, c2, c3, c4, c5 = st.columns(5, gap="small")
 
-# --- 卡片 1：期貨方向（外資 OI） ---
-with c1:
-    st.markdown(
-        f"""
-        <div class='kpi-card'>
-            <div class='kpi-title'>期貨方向</div>
-            <div class='kpi-value {fut_engine['bias']}'>
-                {fut_engine['direction']}
+    # --- 卡片 1：期貨方向（外資 OI） ---
+    with c1:
+        st.markdown(
+            f"""
+            <div class='kpi-card'>
+                <div class='kpi-title'>期貨方向</div>
+                <div class='kpi-value {fut_engine['bias']}'>
+                    {fut_engine['direction']}
+                </div>
+                <div class='kpi-sub'>外資 OI + 價格</div>
             </div>
-            <div class='kpi-sub'>外資 OI + 價格</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+            """,
+            unsafe_allow_html=True,
+        )
 
-# --- 卡片 2：外資 OI 變化 ---
-oi_color = "#FF3B30" if fut_engine["delta_oi"] > 0 else "#34C759" if fut_engine["delta_oi"] < 0 else "#000000"
-with c2:
-    st.markdown(
-        f"""
-        <div class='kpi-card'>
-            <div class='kpi-title'>外資 OI</div>
-            <div class='kpi-value' style='color:{oi_color}'>
-                {fut_engine['delta_oi']:+,}
+    # --- 卡片 2：外資 OI 變化 ---
+    oi_color = "#FF3B30" if fut_engine["delta_oi"] > 0 else "#34C759" if fut_engine["delta_oi"] < 0 else "#000000"
+    with c2:
+        st.markdown(
+            f"""
+            <div class='kpi-card'>
+                <div class='kpi-title'>外資 OI</div>
+                <div class='kpi-value' style='color:{oi_color}'>
+                    {fut_engine['delta_oi']:+,}
+                </div>
+                <div class='kpi-sub'>信心 {fut_engine['confidence']}%</div>
             </div>
-            <div class='kpi-sub'>信心 {fut_engine['confidence']}%</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+            """,
+            unsafe_allow_html=True,
+        )
 
-# --- 卡片 3：選擇權防線 ---
-opt_range_text = (
-    f"{opt_engine['put_wall']} – {opt_engine['call_wall']}"
-    if opt_engine else "資料不足"
-)
-with c3:
-    st.markdown(
-        f"""
-        <div class='kpi-card'>
-            <div class='kpi-title'>選擇權防線</div>
-            <div class='kpi-value'>
-                {opt_range_text}
+    # --- 卡片 3：選擇權防線 ---
+    opt_range_text = (
+        f"{opt_engine['put_wall']} – {opt_engine['call_wall']}"
+        if opt_engine else "資料不足"
+    )
+    with c3:
+        st.markdown(
+            f"""
+            <div class='kpi-card'>
+                <div class='kpi-title'>選擇權防線</div>
+                <div class='kpi-value'>
+                    {opt_range_text}
+                </div>
+                <div class='kpi-sub'>Put 支撐 / Call 壓力</div>
             </div>
-            <div class='kpi-sub'>Put 支撐 / Call 壓力</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+            """,
+            unsafe_allow_html=True,
+        )
 
-# --- 卡片 4：現貨確認 ---
-spot_symbol = "✔" if spot_engine["confirm"] else "✖"
-spot_color = "#FF3B30" if spot_engine["confirm"] else "#34C759"
-with c4:
-    st.markdown(
-        f"""
-        <div class='kpi-card'>
-            <div class='kpi-title'>現貨確認</div>
-            <div class='kpi-value' style='color:{spot_color}'>
-                {spot_symbol}
+    # --- 卡片 4：現貨確認 ---
+    spot_symbol = "✔" if spot_engine["confirm"] else "✖"
+    spot_color = "#FF3B30" if spot_engine["confirm"] else "#34C759"
+    with c4:
+        st.markdown(
+            f"""
+            <div class='kpi-card'>
+                <div class='kpi-title'>現貨確認</div>
+                <div class='kpi-value' style='color:{spot_color}'>
+                    {spot_symbol}
+                </div>
+                <div class='kpi-sub'>{spot_engine['reason']}</div>
             </div>
-            <div class='kpi-sub'>{spot_engine['reason']}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+            """,
+            unsafe_allow_html=True,
+        )
 
-# --- 卡片 5：總體狀態（最重要） ---
-state_color = "#FF3B30" if "偏多" in final_state else "#34C759" if "偏空" in final_state else "#000000"
-with c5:
-    st.markdown(
-        f"""
-        <div class='kpi-card'>
-            <div class='kpi-title'>總體狀態</div>
-            <div class='kpi-value' style='color:{state_color}'>
-                {final_state}
+    # --- 卡片 5：總體狀態（最重要） ---
+    state_color = "#FF3B30" if "偏多" in final_state else "#34C759" if "偏空" in final_state else "#000000"
+    with c5:
+        st.markdown(
+            f"""
+            <div class='kpi-card'>
+                <div class='kpi-title'>總體狀態</div>
+                <div class='kpi-value' style='color:{state_color}'>
+                    {final_state}
+                </div>
+                <div class='kpi-sub'>三合一判斷</div>
             </div>
-            <div class='kpi-sub'>三合一判斷</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
+            """,
+            unsafe_allow_html=True,
+        )
 
     # ===== 取資料 =====
     df_day_all = fetch_position_for_trade_date(trade_date)
