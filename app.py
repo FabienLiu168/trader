@@ -606,6 +606,7 @@ def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
 
     # === 欄位保底處理（避免 KeyError） ===
     COLUMN_ALIAS = {
+
     # 股票代碼
     "證券代號": "stock_id",
     "代號": "stock_id",
@@ -623,9 +624,9 @@ def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
     "成交金額": "amount",
     }
     
-    for k, v in COLUMN_ALIAS.items():
-        if k in df.columns and v not in df.columns:
-            df = df.rename(columns={k: v})
+    for src, dst in COLUMN_ALIAS.items():
+        if src in df.columns and dst not in df.columns:
+            df = df.rename(columns={src: dst})
     
     # === 3️⃣ 數值清洗 ===
     for col in ["volume", "amount", "open", "high", "low", "close"]:
@@ -752,7 +753,7 @@ def format_stock_cell(row: dict, col: dict):
     if col.get("formatter") == "price_change":
         open_p = row.get("open")
         close_p = row.get("close")
-        if open_p and close_p:
+        if open_p is not None and close_p is not None:
             diff = (close_p - open_p) / open_p * 100
             color = "#FF3B30" if diff > 0 else "#34C759" if diff < 0 else "#000000"
             return (
@@ -1080,7 +1081,7 @@ def render_tab_stock_futures(trade_date: dt.date):
 
     # 2️⃣ 強制轉成股票代碼 list（關鍵）
     top20_list = (
-        top20_raw[["代碼", "股票名稱"]]
+        top20_raw[["代碼", "股名"]]
         .astype(str)
         .to_dict("records")
         if isinstance(top20_raw, pd.DataFrame)
@@ -1151,8 +1152,8 @@ def render_tab_stock_futures(trade_date: dt.date):
             "stock_name": stock_name,
             "open": r["open"],          # 保留，給 formatter 用
             "close": r["close"],
-            "volume": r["Trading_Volume"],
-            "amount": r["Trading_money"],
+            "volume": r.get("Trading_Volume"),
+            "amount": r.get("Trading_money"),
             "branch": branch_link,
         })
 
