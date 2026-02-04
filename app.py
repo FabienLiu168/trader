@@ -1025,8 +1025,8 @@ def render_tab_option_market(trade_date: dt.date):
 # =========================
 # 第二模組｜股票表格欄位設定（可擴充）
 STOCK_TABLE_COLUMNS = [
-    {"key": "stock_id", "label": "股票代碼"},
-    {"key": "stock_name", "label": "股票名稱"},
+    {"key": "stock_id", "label": "代碼"},
+    {"key": "stock_name", "label": "名稱"},
     {"key": "close", "label": "收盤", "formatter": "price_change"},
     {"key": "volume", "label": "成交量", "formatter": "volume_k"},
     {"key": "amount", "label": "成交金額", "formatter": "amount_m"},
