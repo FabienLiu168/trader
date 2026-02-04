@@ -703,7 +703,7 @@ def render_tab_option_market(trade_date: dt.date):
     mood = ai["direction_text"]
     cls = "bull" if mood == "偏多" else "bear" if mood == "偏空" else "neut"
 
-     c1, c2, c3, c4, c5 = st.columns(5, gap="small")
+    c1, c2, c3, c4, c5 = st.columns(5, gap="small")
 
     with c1:
         st.markdown(
