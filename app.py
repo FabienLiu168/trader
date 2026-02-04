@@ -637,17 +637,19 @@ def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
 
         p = df_day.iloc[0]
 
-        stock_name = str(r["stock_name"]).strip()
         rows.append({
-            "代碼": r["stock_id"],
-            "股票": r["stock_name"],
-            "開盤": p["open"],
-            "最高": p["max"],
-            "最低": p["min"],
-            "收盤": p["close"],
-            "成交量": p["Trading_Volume"],
-            "成交金額": p["Trading_money"],
+        -    "代碼": r["stock_id"],
+        -    "股票": r["stock_name"],
+        +    "代碼": r["stock_id"],
+        +    "股票": r["stock_name"],
+             "開盤": p["open"],
+             "最高": p["max"],
+             "最低": p["min"],
+             "收盤": p["close"],
+             "成交量": p["Trading_Volume"],
+             "成交金額": p["Trading_money"],
         })
+
 
     return pd.DataFrame(rows)
 
