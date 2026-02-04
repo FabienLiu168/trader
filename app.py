@@ -15,15 +15,52 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # 基本設定
 # =========================
 st.set_page_config(
-    page_title="大叔法歌交易室",
+    page_title="O'發哥操盤室",
     layout="wide"
 )
 
-APP_TITLE = "大叔法歌交易室"
+APP_TITLE = "O'發哥操盤室"
 
 st.markdown(
     """
     <style>
+
+    /* =========================
+       KPI Card RWD Fix
+       ========================= */
+    @media (max-width: 768px) {
+      .kpi-card {
+        min-height: auto;
+        padding: 12px;
+      }
+
+      .kpi-value {
+        font-size: 1.3rem;
+      }
+    }
+
+    /* =========================
+   Global Design System
+   ========================= */
+    :root {
+      --font-title: 1.15rem;
+      --font-value: 1.6rem;
+      --font-sub: 0.9rem;
+      --space-xs: 6px;
+      --space-sm: 10px;
+      --space-md: 16px;
+      --space-lg: 24px;
+    }
+
+    /* 手機自動縮排與縮字 */
+    @media (max-width: 768px) {
+      :root {
+        --font-title: 1.0rem;
+        --font-value: 1.3rem;
+        --font-sub: 0.8rem;
+      }
+    }
+
     div[data-testid="stAppViewContainer"] > .main {
         padding-top: 3.5rem;
     }
@@ -52,20 +89,20 @@ st.markdown(
     }
 
     .kpi-card{
-        border:1px solid rgba(255,255,255,.12);
-        border-radius:14px;
-        padding:16px 18px;
-        background:#F4F6F5;
-        box-shadow:0 6px 22px rgba(0,0,0,.18);
-        min-height:140px;
-        display:flex;
-        flex-direction:column;
-        justify-content:space-between;
+    padding: var(--space-md);
+    min-height: 120px;
     }
 
-    .kpi-title{ font-size:1.2rem;opacity:.85;color:#000000 }
-    .kpi-value{ font-size:1.7rem;font-weight:500;line-height:1.5;color:#000000 }
-    .kpi-sub{ font-size:1.0rem;opacity:.65;line-height:1.5;color:#000000}
+    .kpi-title{ 
+        font-size:var(--font-title);
+    }
+    .kpi-value{ 
+        font-size:var(--font-value);
+        line-height: 1.4;
+        }
+    .kpi-sub{ 
+        font-size: var(--font-sub);
+    }
 
     /* date_input 標題文字 */
     div[data-testid="stDateInput"] label {
@@ -138,37 +175,254 @@ st.markdown(
     unsafe_allow_html=True,
 )
 # =========================
-# 工具
+# 工具區
 # =========================
+# === 選擇權資料（TXO，取最近一個交易日）===
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_option_latest(trade_date):
+    for i in range(1, 6):
+        d = trade_date - dt.timedelta(days=i)
+        if d.weekday() >= 5:
+            continue
+        df = finmind_get(
+            "TaiwanOptionDaily",
+            "TXO",
+            d.strftime("%Y-%m-%d"),
+            d.strftime("%Y-%m-%d"),
+        )
+        if not df.empty:
+            return df
+    return pd.DataFrame()
+    
+@st.cache_data(ttl=600, show_spinner=False)
+def fut_trend_engine(fut_today, fut_prev, oi_today, oi_prev):
+    price_chg = fut_today - fut_prev
+    delta_oi = oi_today - oi_prev
+
+    if price_chg > 0 and delta_oi > 0:
+        direction = "趨勢多"
+        bias = "bull"
+    elif price_chg < 0 and delta_oi > 0:
+        direction = "趨勢空"
+        bias = "bear"
+    elif delta_oi < 0:
+        direction = "震盪"
+        bias = "neut"
+    else:
+        direction = "中性"
+        bias = "neut"
+
+    confidence = min(100, int(abs(delta_oi) / 500))
+
+    return {
+        "direction": direction,
+        "bias": bias,
+        "delta_oi": int(delta_oi),
+        "confidence": confidence,
+    }
+
+def option_structure_engine(df_opt):
+    if df_opt is None or df_opt.empty:
+        return None
+
+    df = df_opt.copy()
+
+    # === 欄位標準化（關鍵修正） ===
+    if "call_put" not in df.columns:
+        return None
+
+    df["cp"] = (
+        df["call_put"]
+        .astype(str)
+        .str.lower()
+        .map({"call": "call", "put": "put"})
+    )
+
+    df["strike"] = pd.to_numeric(df["strike_price"], errors="coerce")
+    df["oi"] = pd.to_numeric(df["open_interest"], errors="coerce")
+
+    df = df.dropna(subset=["cp", "strike", "oi"])
+
+    call = df[df["cp"] == "call"]
+    put  = df[df["cp"] == "put"]
+
+    if call.empty or put.empty:
+        return None
+
+    call_wall = int(call.loc[call["oi"].idxmax(), "strike"])
+    put_wall  = int(put.loc[put["oi"].idxmax(), "strike"])
+
+    dominant = "neutral"
+    if call["oi"].sum() > put["oi"].sum():
+        dominant = "call"
+    elif put["oi"].sum() > call["oi"].sum():
+        dominant = "put"
+
+    return {
+        "call_wall": call_wall,
+        "put_wall": put_wall,
+        "dominant": dominant,
+        "range": (put_wall, call_wall),
+    }
+
+
+def spot_confirm_engine(spot):
+    if spot is None:
+        return {"confirm": False, "reason": "無資料"}
+
+    if spot["vol_today"] > spot["vol_ma5"] and spot["up"] > spot["down"]:
+        return {"confirm": True, "reason": "量增價揚"}
+
+    if spot["up"] < spot["down"]:
+        return {"confirm": False, "reason": "跌家數多"}
+
+    return {"confirm": False, "reason": "量能不足"}
+
+
+def trend_engine(fut, opt, spot):
+    if fut["direction"] == "趨勢多" and opt and opt["dominant"] != "call" and spot["confirm"]:
+        return "偏多可操作"
+    if fut["direction"] == "趨勢空" and opt and opt["dominant"] != "put" and spot["confirm"]:
+        return "偏空可操作"
+    return "觀望 / 區間"
+
+def fetch_fut_foreign_oi(trade_date: dt.date):
+    """
+    外資台指期貨未平倉（TX）
+    """
+    df = finmind_get(
+        "TaiwanFuturesInstitutionalInvestors",
+        "TX",
+        trade_date.strftime("%Y-%m-%d"),
+        trade_date.strftime("%Y-%m-%d"),
+    )
+    if df.empty:
+        return None
+
+    df = df[df["institutional_investors"] == "Foreign_Investor"]
+    if df.empty:
+        return None
+
+    return {
+        "net_oi": float(df.iloc[0]["open_interest_net"]),
+    }
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_position_for_trade_date(trade_date: dt.date):
+    df = finmind_get(
+        "TaiwanFuturesDaily",
+        "TX",
+        trade_date.strftime("%Y-%m-%d"),
+        (trade_date + dt.timedelta(days=3)).strftime("%Y-%m-%d"),
+    )
+    if df.empty:
+        return df
+    df = df[df["trading_session"].astype(str) == "position"].copy()
+    df["trade_date"] = trade_date
+    return df
+   
+def pick_main_contract_position(df, trade_date):
+    x = df.copy()
+    x["ym"] = pd.to_numeric(x["contract_date"], errors="coerce")
+    target = trade_date.year * 100 + trade_date.month
+    cand = x[x["ym"] >= target]
+    return (
+        cand.sort_values("ym").iloc[0]
+        if not cand.empty
+        else x.sort_values("ym").iloc[-1]
+    )
+
+
+def get_prev_trading_close(trade_date: dt.date, lookback_days=7):
+    for i in range(1, lookback_days + 1):
+        d = trade_date - dt.timedelta(days=i)
+        if d.weekday() >= 5:
+            continue
+
+        df = fetch_position_for_trade_date(d)
+        if df.empty:
+            continue
+
+        row = pick_main_contract_position(df, d)
+
+        settle = row.get("settlement_price")
+        close = row.get("close")
+
+        if settle not in (None, "", 0) and pd.notna(settle):
+            return float(settle)
+
+        if close not in (None, "", 0) and pd.notna(close):
+            return float(close)
+
+    return None
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_index_confirm(trade_date: dt.date):
+    """
+    現貨確認：加權量能 + 漲跌家數
+    """
+    df = finmind_get(
+        "TaiwanStockStatisticsOfOrderBookAndTrade",
+        None,
+        (trade_date - dt.timedelta(days=7)).strftime("%Y-%m-%d"),
+        trade_date.strftime("%Y-%m-%d"),
+    )
+
+    if df.empty:
+        return None
+
+    df = df.sort_values("date")
+    today = df.iloc[-1]
+
+    vol_today = today["Trading_Volume"]
+    vol_ma5 = df["Trading_Volume"].tail(5).mean()
+
+    return {
+        "vol_today": vol_today,
+        "vol_ma5": vol_ma5,
+        "up": today["Up_Count"],
+        "down": today["Down_Count"],
+    }
+
 def is_trading_day(d: dt.date) -> bool:
     return d.weekday() < 5
 @st.cache_data(ttl=600, show_spinner=False)
 def get_latest_trading_date(max_lookback: int = 10) -> dt.date:
     """
-    回傳最近一個「FinMind 確實有交易資料」的日期
+    安全取得最近交易日：
+    - FINMIND_TOKEN 有 → 用 FinMind 驗證
+    - 沒 token / API 掛 → 直接 fallback 今天
     """
     today = dt.date.today()
+
+    # 沒 token 直接退回今天（避免整個 app 掛掉）
+    if not FINMIND_TOKEN:
+        return today
 
     for i in range(max_lookback):
         d = today - dt.timedelta(days=i)
 
-        # 先排除週末（加速）
+        # 跳過週末
         if d.weekday() >= 5:
             continue
 
-        # 用一檔流動性最高的股票驗證是否有資料
-        df = finmind_get(
-            dataset="TaiwanStockPrice",
-            data_id="2330",  # 台積電，幾乎不會缺資料
-            start_date=d.strftime("%Y-%m-%d"),
-            end_date=d.strftime("%Y-%m-%d"),
-        )
+        try:
+            df = finmind_get(
+                dataset="TaiwanStockPrice",
+                data_id="2330",  # 流動性最高，當探針
+                start_date=d.strftime("%Y-%m-%d"),
+                end_date=d.strftime("%Y-%m-%d"),
+            )
+        except Exception:
+            continue
 
         if not df.empty:
             return d
 
-    # 保底（理論上不會用到）
+    # 最差情況保底
     return today
+
 
 def clamp(v, lo, hi):
     return max(lo, min(hi, v))
@@ -240,10 +494,10 @@ def fetch_multi_stock_daily(stock_ids: list[str], trade_date: dt.date):
     return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
 
-@st.cache_data(ttl=600, show_spinner=False)
-def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> list[str]:
+#@st.cache_data(ttl=600, show_spinner=False)
+#def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> list[str]:
     """
-    使用 TWSE 官方 CSV，取得成交量 Top10 股票代碼
+    使用 TWSE 官方 CSV，取得成交量 Top20 股票代碼
     """
     import io
     import urllib3
@@ -287,13 +541,13 @@ def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> list[str]:
     )
 
     df = df.sort_values(vol_col, ascending=False)
-    return df[code_col].head(10).astype(str).tolist()
+    return df[code_col].head(20).astype(str).tolist()
 
 
 @st.cache_data(ttl=600, show_spinner=False)
-def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
+def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
     """
-    使用 TWSE 官方 CSV，取得「成交量 Top10 股票」，再用 FinMind 補齊股價資料
+    使用 TWSE 官方 CSV，取得「成交量 Top20 股票」，再用 FinMind 補齊股價資料
     """
 
     # === 1️⃣ TWSE 官方 CSV（最穩定） ===
@@ -314,7 +568,12 @@ def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
             verify=False   # ✅ 關閉 SSL 驗證（關鍵）
         )
 
-        r.encoding = "big5"
+        content = r.content.decode("big5", errors="ignore")
+
+        lines = [
+            line for line in content.split("\n")
+            if line.startswith('"') and len(line.split('","')) >= 16
+        ]
     except Exception as e:
         st.error(f"❌ TWSE CSV 下載失敗：{e}")
         return pd.DataFrame()
@@ -357,19 +616,19 @@ def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
 
     df = df.dropna(subset=["stock_id", "volume"])
 
-    # === 4️⃣ 成交量排序，取 Top10 ===
-    top10 = (
+    # === 4️⃣ 成交量排序，取 Top20 ===
+    top20 = (
         df.sort_values("volume", ascending=False)
-          .head(10)
+          .head(20)
           .copy()
     )
 
-    if top10.empty:
+    if top20.empty:
         return pd.DataFrame()
 
     # === 5️⃣ 用 FinMind 補齊資料（保證你後面邏輯一致） ===
     rows = []
-    for _, r in top10.iterrows():
+    for _, r in top20.iterrows():
         df_price = fetch_single_stock_daily(r["stock_id"], trade_date)
         df_day = df_price[df_price["date"] == trade_date.strftime("%Y-%m-%d")]
 
@@ -377,6 +636,8 @@ def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
             continue
 
         p = df_day.iloc[0]
+
+        stock_name = str(r["stock_name"]).strip()
         rows.append({
             "股票代碼": r["stock_id"],
             "股票名稱": r["stock_name"],
@@ -391,9 +652,9 @@ def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 @st.cache_data(ttl=600, show_spinner=False)
-def fetch_top10_volume_from_twse(trade_date: dt.date) -> list[str]:
+def fetch_top20_volume_from_twse(trade_date: dt.date) -> list[str]:
     """
-    從 TWSE 官方 JSON 取得『上市成交量 Top10 股票代碼』
+    從 TWSE 官方 JSON 取得『上市成交量 Top20 股票代碼』
     """
 
     # TWSE 使用民國年
@@ -441,13 +702,13 @@ def fetch_top10_volume_from_twse(trade_date: dt.date) -> list[str]:
     )
 
     # 依成交量排序取前 10
-    top10_ids = (
+    top20_ids = (
         df.sort_values("volume", ascending=False)
-          .head(10)["stock_id"]
+          .head(20)["stock_id"]
           .tolist()
     )
 
-    return top10_ids
+    return top20_ids
 def render_stock_table_html(df: pd.DataFrame):
     st.markdown(
         """
@@ -491,10 +752,15 @@ def render_stock_table_html(df: pd.DataFrame):
         }
 
         /* 成交量、成交金額弱化 */
-        .stock-table td:nth-last-child(1),
-        .stock-table td:nth-last-child(2) {
+        .stock-table td:nth-last-child(2),
+        .stock-table td:nth-last-child(3) {
             color: #555;
             font-size: 14px;
+        }
+        /* 券商買賣超連結 */
+        .stock-table td:last-child {
+            text-align: center;
+            font-size: 18px;
         }
 
         /* 收盤價預設黑色 */
@@ -502,6 +768,25 @@ def render_stock_table_html(df: pd.DataFrame):
             color: #000;
             font-weight: 600;
         }
+        
+        /* =========================
+           Stock Table RWD
+           ========================= */
+        @media (max-width: 768px) {
+          .stock-table {
+            display: block;
+            overflow-x: auto;
+            white-space: nowrap;
+          }
+
+          .stock-table thead th,
+          .stock-table tbody td {
+            font-size: 13px;
+            padding: 8px;
+          }
+        }
+
+        
         </style>
         """,
         unsafe_allow_html=True,
@@ -537,296 +822,265 @@ def render_stock_table_html(df: pd.DataFrame):
 # 第一模組：期權大盤
 # =========================
 def render_tab_option_market(trade_date: dt.date):
+    # ===============================
+    # ✅ KPI 所有變數預設值（防炸彈）
+    # ===============================
+    fut_price = 0.0
+    prev_close = None
 
-    @st.cache_data(ttl=600, show_spinner=False)
-    def fetch_position_for_trade_date(trade_date: dt.date):
-        df = finmind_get(
-            "TaiwanFuturesDaily",
-            "TX",
-            trade_date.strftime("%Y-%m-%d"),
-            (trade_date + dt.timedelta(days=3)).strftime("%Y-%m-%d"),
-        )
-        if df.empty:
-            return df
-        df = df[df["trading_session"].astype(str) == "position"].copy()
-        df["trade_date"] = trade_date
-        return df
-
-    def pick_main_contract_position(df, trade_date):
-        x = df.copy()
-        x["ym"] = pd.to_numeric(x["contract_date"], errors="coerce")
-        target = trade_date.year * 100 + trade_date.month
-        cand = x[x["ym"] >= target]
-        return cand.sort_values("ym").iloc[0] if not cand.empty else x.sort_values("ym").iloc[-1]
-
-    def calc_ai_scores(main_row, df_all):
-        open_ = float(main_row.get("open", 0) or 0)
-        settle = main_row.get("settlement_price")
-        close = main_row.get("close")
-        final_close = float(settle) if settle not in (None, "", 0) else float(close or 0)
-
-        high_ = float(main_row.get("max", 0) or 0)
-        low_ = float(main_row.get("min", 0) or 0)
-        spread = final_close - open_
-        day_range = abs(high_ - low_)
-
-        vol = float(pd.to_numeric(main_row.get("volume", 0), errors="coerce") or 0)
-        vol_med = max(float(pd.to_numeric(df_all["volume"], errors="coerce").median() or 1), 1)
-
-        score = (
-            clamp(spread / 100.0, -3, 3) * 0.7 +
-            clamp((vol / vol_med - 1) * 2, -2, 2) * 0.3
-        )
-
-        direction = "偏多" if score > 0.8 else "偏空" if score < -0.8 else "中性"
-
-        return {
-            "direction_text": direction,
-            "tx_last_price": final_close,
-            "day_range": day_range,
-            "risk_score": int(clamp(day_range / 3, 0, 100)),
-            "consistency_pct": int(abs(score) / 3 * 100),
-        }
-
-    def get_prev_trading_close(trade_date: dt.date, lookback_days=7):
-        for i in range(1, lookback_days + 1):
-            d = trade_date - dt.timedelta(days=i)
-            if d.weekday() >= 5:
-                continue
-            df = fetch_position_for_trade_date(d)
-            if not df.empty:
-                row = pick_main_contract_position(df, d)
-                settle = row.get("settlement_price")
-                close = row.get("close")
-                return float(settle) if settle not in (None, "", 0) else float(close or 0)
-        return None
-
-    # ===== 取資料 =====
+    # ===== 期貨主力資料 =====
     df_day_all = fetch_position_for_trade_date(trade_date)
     if df_day_all.empty:
         st.error("❌ 無期貨結算資料")
         return
-
+    
     main_row = pick_main_contract_position(df_day_all, trade_date)
-    ai = calc_ai_scores(main_row, df_day_all)
-
-    fut_price = ai["tx_last_price"]
+    
+    settle = main_row.get("settlement_price")
+    close = main_row.get("close")
+    
+    if settle not in (None, "", 0) and pd.notna(settle):
+        fut_price = float(settle)
+    elif close not in (None, "", 0) and pd.notna(close):
+        fut_price = float(close)
+    
     prev_close = get_prev_trading_close(trade_date)
 
-    price_diff = pct_diff = None
-    price_color = "#000000"
-    if prev_close:
-        price_diff = fut_price - prev_close
-        pct_diff = price_diff / prev_close * 100
-        price_color = "#FF3B30" if price_diff > 0 else "#34C759" if price_diff < 0 else "#000000"
-
-    # ===== UI =====
-    st.markdown("<h2 class='fut-section-title'>📈 台指期貨｜趨勢方向</h2>", unsafe_allow_html=True)
-
-    mood = ai["direction_text"]
-    cls = "bull" if mood == "偏多" else "bear" if mood == "偏空" else "neut"
-
-    c1, c2, c3, c4, c5 = st.columns([1.6, 1.6, 1.2, 1.2, 1.4])
-
-    with c1:
-        st.markdown(
-            f"<div class='kpi-card'><div class='kpi-title'>方向</div>"
-            f"<div class='kpi-value {cls}'>{mood}</div></div>",
-            unsafe_allow_html=True,
-        )
-
-    with c2:
-        st.markdown(
-            f"<div class='kpi-card'><div class='kpi-title'>收盤價</div>"
-            f"<div class='kpi-value' style='color:{price_color}'>{fut_price:.0f}"
-            f"<span style='font-size:1.05rem'> ({price_diff:+.0f}，{pct_diff:+.1f}%)</span>"
-            f"</div></div>",
-            unsafe_allow_html=True,
-        )
-
-    with c3:
-        st.markdown(
-            f"<div class='kpi-card'><div class='kpi-title'>一致性</div>"
-            f"<div class='kpi-value'>{ai['consistency_pct']}%</div></div>",
-            unsafe_allow_html=True,
-        )
-
-    with c4:
-        st.markdown(
-            f"<div class='kpi-card'><div class='kpi-title'>風險</div>"
-            f"<div class='kpi-value'>{ai['risk_score']}/100</div></div>",
-            unsafe_allow_html=True,
-        )
-
-    with c5:
-        st.markdown(
-            f"<div class='kpi-card'><div class='kpi-title'>日震幅</div>"
-            f"<div class='kpi-value'>{ai['day_range']:.0f}</div></div>",
-            unsafe_allow_html=True,
-        )
-    # ===== 選擇權 UI（完整復原）=====
-    def normalize_cp(v):
-        s = str(v).lower()
-        if s in ("c", "call", "買權"):
-            return "call"
-        if s in ("p", "put", "賣權"):
-            return "put"
-        return None
-
-    @st.cache_data(ttl=600, show_spinner=False)
-    def fetch_option_latest(trade_date):
-        for i in range(1, 6):
-            d = trade_date - dt.timedelta(days=i)
-            if d.weekday() >= 5:
-                continue
-            df = finmind_get(
-                "TaiwanOptionDaily",
-                "TXO",
-                d.strftime("%Y-%m-%d"),
-                d.strftime("%Y-%m-%d"),
-            )
-            if not df.empty:
-                df["trade_date"] = d
-                return df
-        return pd.DataFrame()
-
-    def calc_option_bias_v3(df, fut_price):
-        if df.empty:
-            return None
-
-        cp_col = next(
-            (c for c in ["option_type", "call_put", "right"] if c in df.columns),
-            None,
-        )
-        if cp_col is None:
-            return None
-
-        df = df.copy()
-        df["cp"] = df[cp_col].apply(normalize_cp)
-        df["strike"] = pd.to_numeric(df["strike_price"], errors="coerce")
-        df["oi"] = pd.to_numeric(df["open_interest"], errors="coerce")
-        df = df.dropna(subset=["cp", "strike", "oi"])
-
-        call = df[df["cp"] == "call"]
-        put = df[df["cp"] == "put"]
-
-        if call.empty or put.empty:
-            return None
-
-        call_lvl = call.loc[call["oi"].idxmax()]["strike"]
-        put_lvl = put.loc[put["oi"].idxmax()]["strike"]
-
-        state, reason = "結構中性", "價格位於 OI 區間內"
-
-        if fut_price >= call_lvl:
-            state, reason = "高檔受壓（偏空結構）", "價格測試 Call 最大 OI 壓力"
-        elif fut_price <= put_lvl:
-            state, reason = "支撐有效（偏多結構）", "價格位於 Put 強支撐上方"
-
-        return {
-            "state": state,
-            "reason": reason,
-            "call_pressure": call_lvl,
-            "put_support": put_lvl,
-            "trade_date": df["trade_date"].iloc[0],
-        }
-
-    st.divider()
-    st.markdown(
-        "<h2 class='opt-section-title'>🧩 選擇權｜市場狀態</h2>",
-        unsafe_allow_html=True,
-    )
+    # === 外資 OI ===
+    oi_today = fetch_fut_foreign_oi(trade_date)
+    oi_prev = fetch_fut_foreign_oi(trade_date - dt.timedelta(days=1))
 
     df_opt = fetch_option_latest(trade_date)
-    opt = calc_option_bias_v3(df_opt, fut_price)
 
-    if opt is None:
-        st.info("ℹ️ 選擇權資料不足（TXO 為 T+1 公告）")
-        return
 
-    opt_state = opt["state"]
-    opt_cls = (
-        "bull" if "偏多" in opt_state else
-        "bear" if "偏空" in opt_state else
-        "neut"
+    if oi_today and oi_prev and prev_close is not None:
+        fut_engine = fut_trend_engine(
+            fut_price,
+            prev_close,
+            oi_today["net_oi"],
+            oi_prev["net_oi"],
+        )
+    else:
+        fut_engine = {"direction": "中性", "bias": "neut", "delta_oi": 0, "confidence": 0}
+
+    # === 選擇權結構 ===
+    opt_engine = option_structure_engine(df_opt)
+
+    # === 現貨確認 ===
+    spot_raw = fetch_index_confirm(trade_date)
+    spot_engine = spot_confirm_engine(spot_raw)
+
+    # === Step 4：三合一總控 ===
+    final_state = trend_engine(fut_engine, opt_engine, spot_engine)
+    # =========================
+    # 四大區塊｜專業操盤卡片
+    # =========================
+    st.markdown(
+        "<h2 class='fut-section-title'>📊 大盤分析</h2>",
+        unsafe_allow_html=True,
+    )
+    
+    c1, c2, c3, c4 = st.columns(4, gap="small")
+    
+    # ==================================================
+    # 🟥 1️⃣ 期貨卡片（價格 × 外資 OI）
+    # ==================================================
+    # === 期貨 OI 結構判斷（給人看的）===
+    # 預設值（避免 Streamlit rerun 變數不存在）
+    price_diff = 0
+    price_sign = ""
+    price_color = "#000000"
+
+    oi_structure = ""
+    if fut_engine["direction"] == "趨勢多" and fut_engine["delta_oi"] > 0:
+        oi_structure = "🟢 價漲＋加碼（多方主導）"
+    elif fut_engine["direction"] == "趨勢空" and fut_engine["delta_oi"] > 0:
+        oi_structure = "🔴 價跌＋加碼（空方主導）"
+    elif fut_engine["delta_oi"] < 0:
+        oi_structure = "🟡 減碼中（可能進入整理）"
+    else:
+        oi_structure = "⚪ 結構中性"
+
+    if prev_close is not None:
+        price_diff = fut_price - prev_close
+    else:
+        price_diff = 0
+
+    price_sign = "+" if price_diff > 0 else ""
+    price_color = "#FF3B30" if price_diff > 0 else "#34C759" if price_diff < 0 else "#000000"
+
+    
+    with c1:
+        st.markdown(
+            f"""
+            <div class='kpi-card'>
+                <div class='kpi-title'>📈 期貨趨勢</div>
+                <div class='kpi-value {fut_engine['bias']}'>
+                    {fut_engine['direction']}
+                </div>
+                <div class='kpi-sub'>
+                    收盤 {fut_price:,.0f}
+                    <span style='color:{price_color}'>
+                        ({price_sign}{price_diff:,.0f})
+                    </span><br>
+                    外資 OI {fut_engine['delta_oi']:+,} 口<br>
+                    信心 {fut_engine['confidence']}%
+                </div>
+                <div class='kpi-sub' style='margin-top:6px; opacity:.75'>
+                    結構判讀：{oi_structure}
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    
+    # ==================================================
+    # 🟨 2️⃣ 選擇權卡片（防線 × 壓力）
+    # ==================================================
+    opt_text = (
+        f"{opt_engine['put_wall']} – {opt_engine['call_wall']}"
+        if opt_engine else "資料不足"
     )
 
-    st.caption(f"📅 選擇權資料日：{opt['trade_date']}")
-
-    oc1, oc2, oc3 = st.columns(3)
-
-    with oc1:
+    opt_shift = "（尚未取得昨日選擇權防線）"        
+    opt_note = (
+        "多方防守（Put）" if opt_engine and opt_engine["dominant"] == "put"
+        else "空方防守（Call）" if opt_engine and opt_engine["dominant"] == "call"
+        else "防守中性"
+    )
+    
+    with c2:
         st.markdown(
-            f"<div class='kpi-card'><div class='kpi-title'>市場狀態</div>"
-            f"<div class='kpi-value {opt_cls}'>{opt_state}</div>"
-            f"<div class='kpi-sub'>{opt['reason']}</div></div>",
+            f"""
+            <div class='kpi-card'>
+                <div class='kpi-title'>🧩 選擇權防線</div>
+                <div class='kpi-value'>
+                    {opt_text}
+                </div>
+                <div class='kpi-sub'>
+                    {opt_note}<br>
+                    Put 支撐 / Call 壓力
+                </div>
+                <div class='kpi-sub' style='opacity:.75'>
+                    昨日比較：{ opt_shift }
+                </div>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
-
-    with oc2:
+    
+    # ==================================================
+    # 🟩 3️⃣ 現貨卡片（量 × 結構）
+    # ==================================================
+    spot_trend = "（尚未取得昨日現貨確認）"
+    spot_symbol = "✔" if spot_engine["confirm"] else "✖"
+    spot_color = "#FF3B30" if spot_engine["confirm"] else "#34C759"
+    
+    with c3:
         st.markdown(
-            f"<div class='kpi-card'><div class='kpi-title'>上方壓力</div>"
-            f"<div class='kpi-value'>{opt['call_pressure']:.0f}</div>"
-            f"<div class='kpi-sub'>Call 最大 OI</div></div>",
+            f"""
+            <div class='kpi-card'>
+                <div class='kpi-title'>📊 現貨確認</div>
+                <div class='kpi-value' style='color:{spot_color}'>
+                    {spot_symbol}
+                </div>
+                <div class='kpi-sub'>
+                    {spot_engine['reason']}<br>
+                    量能 vs 結構
+                </div>
+                <div class='kpi-sub' style='opacity:.75'>
+                昨日比較：{ spot_trend }
+                </div>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
-
-    with oc3:
+    
+    # ==================================================
+    # 🟦 4️⃣ 綜合評估卡片（最終決策）
+    # ==================================================
+    final_trend = "（尚未取得昨日綜合判斷）"
+    state_color = (
+        "#FF3B30" if "偏多" in final_state
+        else "#34C759" if "偏空" in final_state
+        else "#000000"
+    )
+    
+    with c4:
         st.markdown(
-            f"<div class='kpi-card'><div class='kpi-title'>下方支撐</div>"
-            f"<div class='kpi-value'>{opt['put_support']:.0f}</div>"
-            f"<div class='kpi-sub'>Put 最大 OI</div></div>",
+            f"""
+            <div class='kpi-card'>
+                <div class='kpi-title'>🧠 綜合評估</div>
+                <div class='kpi-value' style='color:{state_color}'>
+                    {final_state}
+                </div>
+                <div class='kpi-sub'>
+                    期貨 × 選擇權 × 現貨<br>
+                    綜合判斷
+                </div>
+                <div class='kpi-sub' style='opacity:.75'>
+                昨日比較：{ final_trend }
+                </div>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
-
 
 # =========================
 # 第二模組：個股期貨（測試版）
 # =========================
+st.caption("📱 手機可左右滑動表格查看完整數據")
 def render_tab_stock_futures(trade_date: dt.date):
 
-    # 1️⃣ 先拿原始 Top10（可能是 list 或 DataFrame）
-    top10_raw = fetch_top10_by_volume_twse_csv(trade_date)
+    # 1️⃣ 先拿原始 Top20（可能是 list 或 DataFrame）
+    top20_raw = fetch_top20_by_volume_twse_csv(trade_date)
 
-    if top10_raw is None or (hasattr(top10_raw, "empty") and top10_raw.empty):
+    if top20_raw is None or (hasattr(top20_raw, "empty") and top20_raw.empty):
         st.warning("⚠️ 查詢日無成交量資料")
         return
 
     # 2️⃣ 強制轉成股票代碼 list（關鍵）
-    top10_list = (
-        top10_raw[["股票代碼", "股票名稱"]]
+    top20_list = (
+        top20_raw[["股票代碼", "股票名稱"]]
         .astype(str)
         .to_dict("records")
-        if isinstance(top10_raw, pd.DataFrame)
-        else [{"股票代碼": sid, "股票名稱": ""} for sid in top10_raw]
+        if isinstance(top20_raw, pd.DataFrame)
+        else [{"股票代碼": sid, "股票名稱": ""} for sid in top20_raw]
     )
 
-    # ✅ 一次抓完所有 Top10 股票日資料
-    stock_ids = [x["股票代碼"] for x in top10_list]
+    # ✅ 一次抓完所有 Top20 股票日資料
+    stock_ids = [x["股票代碼"] for x in top20_list]
     df_all_stock = fetch_multi_stock_daily(stock_ids, trade_date)
 
     if df_all_stock.empty:
         st.warning("⚠️ 查詢日無任何個股資料")
         return
 
-    st.markdown("### ⬤ TWSE 成交量 TOP10 股票")
-    #st.write(top10_ids)
+    st.markdown("### ⬤ TWSE 成交量 TOP20 股票")
+    #st.write(top20_ids)
 
-    #if not top10_ids:
+    #if not top20_ids:
     #    st.warning("⚠️ 無前十大股票")
     #    return
     
     # 3️⃣ 蒐集個股資料
     rows = []
 
-    for item in top10_list:
+    for item in top20_list:
         sid = item["股票代碼"]
         stock_name = item["股票名稱"]
 
         df_sid = df_all_stock[df_all_stock["stock_id"] == sid]
         df_day = df_sid[df_sid["date"] == trade_date.strftime("%Y-%m-%d")]
-    
+        if df_day.empty:
+            continue
         r = df_day.iloc[0]
+
+        branch_url = f"https://histock.tw/stock/branch.aspx?no={sid}"
+        branch_link = (
+            f"<a href='{branch_url}' target='_blank' "
+            f"style='text-decoration:none;font-weight:700;'>🔗</a>"
+        )
         
         # 取得前一交易日收盤價（同一 API 內）
         df_prev = (
@@ -866,6 +1120,7 @@ def render_tab_stock_futures(trade_date: dt.date):
             "收盤": close_display,
             "成交量": r["Trading_Volume"],
             "成交金額": r["Trading_money"],
+            "券商分點": branch_link,   # ✅ 正確位置
         })
 
 
@@ -901,10 +1156,11 @@ if not is_trading_day(trade_date):
     st.warning("📅 非交易日")
     st.stop()
 
-tab1, tab2 = st.tabs(["📈 期權大盤", "📊 個股期貨"])
+tab1, tab2 = st.tabs(["📈 期權趨勢", "📊 個股期貨"])
 
 with tab1:
     render_tab_option_market(trade_date)
 
 with tab2:
     render_tab_stock_futures(trade_date)
+
