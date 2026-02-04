@@ -543,14 +543,12 @@ def fetch_multi_stock_daily(stock_ids: list[str], trade_date: dt.date):
     df = df.sort_values(vol_col, ascending=False)
     return df[code_col].head(20).astype(str).tolist()
 
-
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
     """
-    使用 TWSE 官方 CSV，取得「成交量 Top20 股票」，再用 FinMind 補齊股價資料
+    使用 TWSE 官方 CSV，取得成交量 Top20 股票（穩定版）
     """
 
-    # === 1️⃣ TWSE 官方 CSV（最穩定） ===
     date_str = trade_date.strftime("%Y%m%d")
     url = "https://www.twse.com.tw/exchangeReport/MI_INDEX"
     params = {
@@ -560,46 +558,31 @@ def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
     }
 
     try:
-        # r = requests.get(url, params=params, timeout=20)
-        r = requests.get(
-            url,
-            params=params,
-            timeout=20,
-            verify=False   # ✅ 關閉 SSL 驗證（關鍵）
-        )
-
+        r = requests.get(url, params=params, timeout=20, verify=False)
         content = r.content.decode("big5", errors="ignore")
-
-        lines = [
-            line for line in content.split("\n")
-            if line.startswith('"') and len(line.split('","')) >= 16
-        ]
     except Exception as e:
         st.error(f"❌ TWSE CSV 下載失敗：{e}")
         return pd.DataFrame()
 
-    # === 2️⃣ 解析 CSV（只抓「每日收盤行情」那一段）===
-    content = r.content.decode("big5", errors="ignore")
-    
+    # === 1️⃣ 只解析一次 CSV（非常重要）
     lines = [
         line for line in content.split("\n")
         if line.startswith('"') and len(line.split('","')) >= 16
     ]
-    
+
     if not lines:
+        st.error("❌ TWSE CSV 無有效資料列")
         return pd.DataFrame()
-    
+
     df = pd.read_csv(io.StringIO("\n".join(lines)))
-    
-    # ✅【防炸保險】確認關鍵欄位是否存在（在 rename 之前）
-    required_cols = {"證券代號", "成交股數"}
-    if not required_cols.issubset(df.columns):
-        st.error(f"❌ TWSE CSV 欄位解析失敗，實際欄位：{list(df.columns)}")
+
+    # === 2️⃣ rename 前防炸（原始欄位）
+    required_raw_cols = {"證券代號", "成交股數"}
+    if not required_raw_cols.issubset(df.columns):
+        st.error(f"❌ TWSE CSV 欄位異常，實際欄位：{list(df.columns)}")
         return pd.DataFrame()
 
-
-
-    # 標準化欄位
+    # === 3️⃣ 欄位標準化
     df = df.rename(columns={
         "證券代號": "stock_id",
         "證券名稱": "stock_name",
@@ -611,52 +594,32 @@ def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
         "收盤價": "close",
     })
 
-    # === 3️⃣ 數值清洗 ===
-    for col in ["volume", "amount", "open", "high", "low", "close"]:
-        df[col] = (
-            df[col]
-            .astype(str)
-            .str.replace(",", "", regex=False)
-            .replace("--", None)
-        )
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-
-    df = df.dropna(subset=["stock_id", "volume"])
-
-    # === 4️⃣ 成交量排序，取 Top20 ===
-    top20 = (
-        df.sort_values("volume", ascending=False)
-          .head(20)
-          .copy()
-    )
-
-    if top20.empty:
+    # === 4️⃣ rename 後防炸（你這次炸的關鍵）
+    required_cols = {"stock_id", "volume"}
+    if not required_cols.issubset(df.columns):
+        st.error(f"❌ 欄位轉換失敗，實際欄位：{list(df.columns)}")
         return pd.DataFrame()
 
-    # === 5️⃣ 用 FinMind 補齊資料（保證你後面邏輯一致） ===
-    rows = []
-    for _, r in top20.iterrows():
-        df_price = fetch_single_stock_daily(r["stock_id"], trade_date)
-        df_day = df_price[df_price["date"] == trade_date.strftime("%Y-%m-%d")]
+    # === 5️⃣ 數值清洗
+    for col in ["volume", "amount", "open", "high", "low", "close"]:
+        if col in df.columns:
+            df[col] = (
+                df[col]
+                .astype(str)
+                .str.replace(",", "", regex=False)
+                .replace("--", None)
+            )
+            df[col] = pd.to_numeric(df[col], errors="coerce")
 
-        if df_day.empty:
-            continue
+    # ✅ 現在 dropna 絕對安全
+    df = df.dropna(subset=["stock_id", "volume"])
 
-        p = df_day.iloc[0]
+    # === 6️⃣ 成交量排序 Top20
+    df = df.sort_values("volume", ascending=False).head(20)
 
-        stock_name = str(r["stock_name"]).strip()
-        rows.append({
-            "股票代碼": r["stock_id"],
-            "股票名稱": r["stock_name"],
-            "開盤": p["open"],
-            "最高": p["max"],
-            "最低": p["min"],
-            "收盤": p["close"],
-            "成交量": p["Trading_Volume"],
-            "成交金額": p["Trading_money"],
-        })
+    return df.reset_index(drop=True)
 
-    return pd.DataFrame(rows)
+
 
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_top20_volume_from_twse(trade_date: dt.date) -> list[str]:
