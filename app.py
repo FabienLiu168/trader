@@ -595,7 +595,7 @@ def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
     # 標準化欄位
     df = df.rename(columns={
         "代號": "stock_id",
-        "股票": "stock_name",
+        "股名": "stock_name",
         "成交股數": "volume",
         "成交金額": "amount",
         "開盤價": "open",
@@ -639,9 +639,9 @@ def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
 
         rows.append({
         -    "代碼": r["stock_id"],
-        -    "股票": r["stock_name"],
+        -    "股名": r["stock_name"],
         +    "代碼": r["stock_id"],
-        +    "股票": r["stock_name"],
+        +    "股名": r["stock_name"],
              "開盤": p["open"],
              "最高": p["max"],
              "最低": p["min"],
@@ -1028,7 +1028,7 @@ def render_tab_option_market(trade_date: dt.date):
 # 第二模組｜股票表格欄位設定（可擴充）
 STOCK_TABLE_COLUMNS = [
     {"key": "stock_id", "label": "代碼"},
-    {"key": "stock_name", "label": "股票"},
+    {"key": "stock_name", "label": "股名"},
     {"key": "close", "label": "收盤", "formatter": "price_change"},
     {"key": "volume", "label": "成交量", "formatter": "volume_k"},
     {"key": "amount", "label": "成交金額", "formatter": "amount_m"},
@@ -1047,11 +1047,11 @@ def render_tab_stock_futures(trade_date: dt.date):
 
     # 2️⃣ 強制轉成股票代碼 list（關鍵）
     top20_list = (
-        top20_raw[["代碼", "股票"]]
+        top20_raw[["代碼", "股名"]]
         .astype(str)
         .to_dict("records")
         if isinstance(top20_raw, pd.DataFrame)
-        else [{"代碼": sid, "股票": ""} for sid in top20_raw]
+        else [{"代碼": sid, "股名": ""} for sid in top20_raw]
     )
 
     # ✅ 一次抓完所有 Top20 股票日資料
@@ -1065,16 +1065,12 @@ def render_tab_stock_futures(trade_date: dt.date):
     st.markdown("### ⬤ TWSE 成交量 TOP20 股票")
     #st.write(top20_ids)
 
-    #if not top20_ids:
-    #    st.warning("⚠️ 無前十大股票")
-    #    return
-    
     # 3️⃣ 蒐集個股資料
     rows = []
 
     for item in top20_list:
         sid = item["代碼"]
-        stock_name = item["股票"]
+        stock_name = item["股名"]
 
         df_sid = df_all_stock[df_all_stock["stock_id"] == sid]
         df_day = df_sid[df_sid["date"] == trade_date.strftime("%Y-%m-%d")]
