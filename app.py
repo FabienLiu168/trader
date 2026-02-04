@@ -309,7 +309,20 @@ def fetch_fut_foreign_oi(trade_date: dt.date):
         "net_oi": float(df.iloc[0]["open_interest_net"]),
     }
 
-
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_position_for_trade_date(trade_date: dt.date):
+    df = finmind_get(
+        "TaiwanFuturesDaily",
+        "TX",
+        trade_date.strftime("%Y-%m-%d"),
+        (trade_date + dt.timedelta(days=3)).strftime("%Y-%m-%d"),
+    )
+    if df.empty:
+        return df
+    df = df[df["trading_session"].astype(str) == "position"].copy()
+    df["trade_date"] = trade_date
+    return df
+    
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_index_confirm(trade_date: dt.date):
     """
@@ -802,20 +815,6 @@ def render_tab_option_market(trade_date: dt.date):
         fut_price = float(close)
     
     prev_close = get_prev_trading_close(trade_date)
-
-    @st.cache_data(ttl=600, show_spinner=False)
-    def fetch_position_for_trade_date(trade_date: dt.date):
-        df = finmind_get(
-            "TaiwanFuturesDaily",
-            "TX",
-            trade_date.strftime("%Y-%m-%d"),
-            (trade_date + dt.timedelta(days=3)).strftime("%Y-%m-%d"),
-        )
-        if df.empty:
-            return df
-        df = df[df["trading_session"].astype(str) == "position"].copy()
-        df["trade_date"] = trade_date
-        return df
 
     def pick_main_contract_position(df, trade_date):
         x = df.copy()
