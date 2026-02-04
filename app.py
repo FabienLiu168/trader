@@ -801,12 +801,12 @@ def render_tab_option_market(trade_date: dt.date):
     spot_engine = spot_confirm_engine(spot_raw)
 
     # === Step 4：三合一總控 ===
-        final_state = trend_engine(fut_engine, opt_engine, spot_engine)
-    # =========================
-    # KPI 區塊（新三合一引擎）
-    # =========================
-        st.markdown("<h2 class='fut-section-title'>📈 台指期貨｜三合一趨勢判斷</h2>", unsafe_allow_html=True)
-        c1, c2, c3, c4, c5 = st.columns(5, gap="small")
+    final_state = trend_engine(fut_engine, opt_engine, spot_engine)
+# =========================
+# KPI 區塊（新三合一引擎）
+# =========================
+st.markdown("<h2 class='fut-section-title'>📈 台指期貨｜三合一趨勢判斷</h2>", unsafe_allow_html=True)
+c1, c2, c3, c4, c5 = st.columns(5, gap="small")
 
 # --- 卡片 1：期貨方向（外資 OI） ---
 with c1:
