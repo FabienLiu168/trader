@@ -526,7 +526,7 @@ def fetch_multi_stock_daily(stock_ids: list[str], trade_date: dt.date):
     df = pd.read_csv(io.StringIO("\n".join(lines)))
     df.columns = df.columns.str.strip()
 
-    # 統一欄位名稱
+    # 統一欄位股票
     code_col = "證券代號"
     vol_col = "成交股數"
 
@@ -595,7 +595,7 @@ def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
     # 標準化欄位
     df = df.rename(columns={
         "代號": "stock_id",
-        "名稱": "stock_name",
+        "股票": "stock_name",
         "成交股數": "volume",
         "成交金額": "amount",
         "開盤價": "open",
@@ -1026,7 +1026,7 @@ def render_tab_option_market(trade_date: dt.date):
 # 第二模組｜股票表格欄位設定（可擴充）
 STOCK_TABLE_COLUMNS = [
     {"key": "stock_id", "label": "代碼"},
-    {"key": "stock_name", "label": "名稱"},
+    {"key": "stock_name", "label": "股票"},
     {"key": "close", "label": "收盤", "formatter": "price_change"},
     {"key": "volume", "label": "成交量", "formatter": "volume_k"},
     {"key": "amount", "label": "成交金額", "formatter": "amount_m"},
@@ -1045,11 +1045,11 @@ def render_tab_stock_futures(trade_date: dt.date):
 
     # 2️⃣ 強制轉成股票代碼 list（關鍵）
     top20_list = (
-        top20_raw[["代碼", "名稱"]]
+        top20_raw[["代碼", "股票"]]
         .astype(str)
         .to_dict("records")
         if isinstance(top20_raw, pd.DataFrame)
-        else [{"代碼": sid, "名稱": ""} for sid in top20_raw]
+        else [{"代碼": sid, "股票": ""} for sid in top20_raw]
     )
 
     # ✅ 一次抓完所有 Top20 股票日資料
@@ -1072,7 +1072,7 @@ def render_tab_stock_futures(trade_date: dt.date):
 
     for item in top20_list:
         sid = item["代碼"]
-        stock_name = item["名稱"]
+        stock_name = item["股票"]
 
         df_sid = df_all_stock[df_all_stock["stock_id"] == sid]
         df_day = df_sid[df_sid["date"] == trade_date.strftime("%Y-%m-%d")]
