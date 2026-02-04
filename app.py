@@ -886,6 +886,11 @@ def render_tab_option_market(trade_date: dt.date):
     # 🟥 1️⃣ 期貨卡片（價格 × 外資 OI）
     # ==================================================
     # === 期貨 OI 結構判斷（給人看的）===
+    # 預設值（避免 Streamlit rerun 變數不存在）
+    price_diff = 0
+    price_sign = ""
+    price_color = "#000000"
+
     oi_structure = ""
     if fut_engine["direction"] == "趨勢多" and fut_engine["delta_oi"] > 0:
         oi_structure = "🟢 價漲＋加碼（多方主導）"
@@ -902,6 +907,8 @@ def render_tab_option_market(trade_date: dt.date):
         price_diff = 0
 
     price_sign = "+" if price_diff > 0 else ""
+    price_color = "#FF3B30" if price_diff > 0 else "#34C759" if price_diff < 0 else "#000000"
+
     
     with c1:
         st.markdown(
