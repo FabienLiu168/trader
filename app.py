@@ -241,9 +241,9 @@ def fetch_multi_stock_daily(stock_ids: list[str], trade_date: dt.date):
 
 
 @st.cache_data(ttl=600, show_spinner=False)
-def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> list[str]:
+def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> list[str]:
     """
-    使用 TWSE 官方 CSV，取得成交量 Top10 股票代碼
+    使用 TWSE 官方 CSV，取得成交量 Top20 股票代碼
     """
     import io
     import urllib3
@@ -291,9 +291,9 @@ def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> list[str]:
 
 
 @st.cache_data(ttl=600, show_spinner=False)
-def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
+def fetch_top20_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
     """
-    使用 TWSE 官方 CSV，取得「成交量 Top10 股票」，再用 FinMind 補齊股價資料
+    使用 TWSE 官方 CSV，取得「成交量 Top20 股票」，再用 FinMind 補齊股價資料
     """
 
     # === 1️⃣ TWSE 官方 CSV（最穩定） ===
@@ -357,19 +357,19 @@ def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
 
     df = df.dropna(subset=["stock_id", "volume"])
 
-    # === 4️⃣ 成交量排序，取 Top10 ===
-    top10 = (
+    # === 4️⃣ 成交量排序，取 Top20 ===
+    top20 = (
         df.sort_values("volume", ascending=False)
-          .head(10)
+          .head(20)
           .copy()
     )
 
-    if top10.empty:
+    if top20.empty:
         return pd.DataFrame()
 
     # === 5️⃣ 用 FinMind 補齊資料（保證你後面邏輯一致） ===
     rows = []
-    for _, r in top10.iterrows():
+    for _, r in top20.iterrows():
         df_price = fetch_single_stock_daily(r["stock_id"], trade_date)
         df_day = df_price[df_price["date"] == trade_date.strftime("%Y-%m-%d")]
 
@@ -393,9 +393,9 @@ def fetch_top10_by_volume_twse_csv(trade_date: dt.date) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 @st.cache_data(ttl=600, show_spinner=False)
-def fetch_top10_volume_from_twse(trade_date: dt.date) -> list[str]:
+def fetch_top20_volume_from_twse(trade_date: dt.date) -> list[str]:
     """
-    從 TWSE 官方 JSON 取得『上市成交量 Top10 股票代碼』
+    從 TWSE 官方 JSON 取得『上市成交量 Top20 股票代碼』
     """
 
     # TWSE 使用民國年
@@ -443,13 +443,13 @@ def fetch_top10_volume_from_twse(trade_date: dt.date) -> list[str]:
     )
 
     # 依成交量排序取前 10
-    top10_ids = (
+    top20_ids = (
         df.sort_values("volume", ascending=False)
-          .head(10)["stock_id"]
+          .head(20)["stock_id"]
           .tolist()
     )
 
-    return top10_ids
+    return top20_ids
 def render_stock_table_html(df: pd.DataFrame):
     st.markdown(
         """
@@ -792,41 +792,41 @@ def render_tab_option_market(trade_date: dt.date):
 # =========================
 def render_tab_stock_futures(trade_date: dt.date):
 
-    # 1️⃣ 先拿原始 Top10（可能是 list 或 DataFrame）
-    top10_raw = fetch_top10_by_volume_twse_csv(trade_date)
+    # 1️⃣ 先拿原始 Top20（可能是 list 或 DataFrame）
+    top20_raw = fetch_top20_by_volume_twse_csv(trade_date)
 
-    if top10_raw is None or (hasattr(top10_raw, "empty") and top10_raw.empty):
+    if top20_raw is None or (hasattr(top20_raw, "empty") and top20_raw.empty):
         st.warning("⚠️ 查詢日無成交量資料")
         return
 
     # 2️⃣ 強制轉成股票代碼 list（關鍵）
-    top10_list = (
-        top10_raw[["股票代碼", "股票名稱"]]
+    top20_list = (
+        top20_raw[["股票代碼", "股票名稱"]]
         .astype(str)
         .to_dict("records")
-        if isinstance(top10_raw, pd.DataFrame)
-        else [{"股票代碼": sid, "股票名稱": ""} for sid in top10_raw]
+        if isinstance(top20_raw, pd.DataFrame)
+        else [{"股票代碼": sid, "股票名稱": ""} for sid in top20_raw]
     )
 
-    # ✅ 一次抓完所有 Top10 股票日資料
-    stock_ids = [x["股票代碼"] for x in top10_list]
+    # ✅ 一次抓完所有 Top20 股票日資料
+    stock_ids = [x["股票代碼"] for x in top20_list]
     df_all_stock = fetch_multi_stock_daily(stock_ids, trade_date)
 
     if df_all_stock.empty:
         st.warning("⚠️ 查詢日無任何個股資料")
         return
 
-    st.markdown("### ⬤ TWSE 成交量 TOP10 股票")
-    #st.write(top10_ids)
+    st.markdown("### ⬤ TWSE 成交量 TOP20 股票")
+    #st.write(top20_ids)
 
-    #if not top10_ids:
+    #if not top20_ids:
     #    st.warning("⚠️ 無前十大股票")
     #    return
     
     # 3️⃣ 蒐集個股資料
     rows = []
 
-    for item in top10_list:
+    for item in top20_list:
         sid = item["股票代碼"]
         stock_name = item["股票名稱"]
 
