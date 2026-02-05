@@ -32,13 +32,3 @@ def debug_branch_top5(stock_id: str, trade_date: dt.date):
     st.error(f"🔴 前五大券商【賣超】合計：{top5_sell['net'].sum():,.0f} 張")
 
 
-tab1, tab2 = st.tabs(["📈 期權趨勢", "📊 個股期貨"])
-
-with tab1:
-    render_tab_option_market(trade_date)
-
-with tab2:
-    render_tab_stock_futures(trade_date)
-
-    # ✅ Debug 測試（此時 trade_date 一定已存在）
-    debug_branch_top5("2337", trade_date)
