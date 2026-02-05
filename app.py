@@ -1,72 +1,32 @@
-import pandas as pd
-import requests
+def debug_branch_top5(stock_id: str, trade_date: dt.date):
+    df = finmind_get(
+        "TaiwanStockInstitutionalInvestorsBuySell",
+        stock_id,
+        trade_date.strftime("%Y-%m-%d"),
+        trade_date.strftime("%Y-%m-%d"),
+    )
 
-FINMIND_API = "https://api.finmindtrade.com/api/v4/data"
-FINMIND_TOKEN = "<你的 FINMIND TOKEN>"
+    if df.empty:
+        st.error("❌ 無券商分點資料")
+        return
 
+    for col in ["buy", "sell", "net"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
 
-def finmind_get(dataset, stock_id, start_date, end_date):
-    params = {
-        "dataset": dataset,
-        "data_id": stock_id,
-        "start_date": start_date,
-        "end_date": end_date,
-        "token": FINMIND_TOKEN,
-    }
-    r = requests.get(FINMIND_API, params=params, timeout=30)
-    try:
-        data = r.json()
-    except Exception:
-        return pd.DataFrame()
+    st.subheader(f"🔍 {stock_id} 券商分點測試（{trade_date}）")
 
-    if data.get("status") != 200:
-        return pd.DataFrame()
+    st.write("原始資料（前 10 筆）")
+    st.dataframe(df[["name", "buy", "sell", "net"]].head(10))
 
-    return pd.DataFrame(data.get("data", []))
+    top5_buy = df.sort_values("net", ascending=False).head(5)
+    top5_sell = df.sort_values("net").head(5)
 
+    st.write("前五大買超")
+    st.table(top5_buy[["name", "net"]])
+    st.success(f"前五大買超合計：{top5_buy['net'].sum():,.0f} 張")
 
-# =========================
-# 測試股票與日期
-# =========================
-stock_id = "2337"        # 旺宏
-trade_date = "2026-02-04"
+    st.write("前五大賣超")
+    st.table(top5_sell[["name", "net"]])
+    st.error(f"前五大賣超合計：{top5_sell['net'].sum():,.0f} 張")
 
-df = finmind_get(
-    "TaiwanStockInstitutionalInvestorsBuySell",
-    stock_id,
-    trade_date,
-    trade_date,
-)
-
-if df.empty:
-    print("❌ 無券商分點資料")
-    exit()
-
-# 確保欄位是數值
-for col in ["buy", "sell", "net"]:
-    df[col] = pd.to_numeric(df[col], errors="coerce")
-
-print("\n=== 原始券商資料（前 10 筆） ===")
-print(df[["name", "buy", "sell", "net"]].head(10))
-
-
-# =========================
-# 前五大買超
-# =========================
-top5_buy = df.sort_values("net", ascending=False).head(5)
-buy_sum = top5_buy["net"].sum()
-
-print("\n=== 前五大【買超】券商 ===")
-print(top5_buy[["name", "net"]])
-print(f"👉 前五大買超合計：{buy_sum:,.0f} 張")
-
-
-# =========================
-# 前五大賣超
-# =========================
-top5_sell = df.sort_values("net").head(5)
-sell_sum = top5_sell["net"].sum()
-
-print("\n=== 前五大【賣超】券商 ===")
-print(top5_sell[["name", "net"]])
-print(f"👉 前五大賣超合計：{sell_sum:,.0f} 張")
+debug_branch_top5("2337", trade_date)
