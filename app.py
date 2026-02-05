@@ -106,6 +106,45 @@ def get_prev_stock_close(stock_id: str, trade_date: dt.date):
         return None
     return float(prev.iloc[-1]["close"])
 
+def format_close_with_prev(row, trade_date):
+    """
+    顯示收盤價，並依『今日 - 昨日』決定顏色與漲跌幅
+    ⚠️ 此函式必須 100% 防呆，否則 DataFrame.apply 會整表炸掉
+    """
+    try:
+        stock_id = str(row.get("股票代碼", "")).strip()
+        close_today = row.get("收盤", None)
+
+        # 沒股票代碼或沒收盤價 → 空白
+        if not stock_id or close_today is None or pd.isna(close_today):
+            return ""
+
+        close_today = float(close_today)
+
+        prev_close = get_prev_stock_close(stock_id, trade_date)
+        if prev_close is None or prev_close == 0:
+            return f"{close_today:.2f}"
+
+        diff = close_today - prev_close
+        pct = diff / prev_close * 100
+
+        if diff > 0:
+            color = "#FF3B30"   # 漲：紅
+        elif diff < 0:
+            color = "#34C759"   # 跌：綠
+        else:
+            color = "#000000"
+
+        return (
+            f"<span style='color:{color};font-weight:600'>"
+            f"{close_today:.2f} ({pct:+.2f}%)</span>"
+        )
+
+    except Exception:
+        # ❗ 保證任何異常都不影響整張表
+        return ""
+
+
 
 # =========================
 # 第一模組（保留原樣）
@@ -337,15 +376,32 @@ def fetch_top20_by_amount_twse_csv(trade_date):
     return df.sort_values("成交金額", ascending=False).head(20)
 
 def parse_branch_csv(file):
-    df = pd.read_csv(file)
-    df = df.rename(columns={
-        next(c for c in df.columns if "代號" in c): "股票代碼",
-        next(c for c in df.columns if "買" in c): "買進",
-        next(c for c in df.columns if "賣" in c): "賣出",
-    })
+    try:
+        df = pd.read_csv(file)
+    except Exception:
+        return pd.DataFrame()
+
+    col_map = {}
+    for c in df.columns:
+        if "代號" in c and "股票代碼" not in col_map.values():
+            col_map[c] = "股票代碼"
+        elif "買" in c and "買進" not in col_map.values():
+            col_map[c] = "買進"
+        elif "賣" in c and "賣出" not in col_map.values():
+            col_map[c] = "賣出"
+
+    df = df.rename(columns=col_map)
+
+    if not {"股票代碼", "買進", "賣出"}.issubset(df.columns):
+        return pd.DataFrame()
+
     df["股票代碼"] = df["股票代碼"].astype(str)
-    df["買賣超"] = pd.to_numeric(df["買進"], errors="coerce") - pd.to_numeric(df["賣出"], errors="coerce")
+    df["買進"] = pd.to_numeric(df["買進"], errors="coerce").fillna(0)
+    df["賣出"] = pd.to_numeric(df["賣出"], errors="coerce").fillna(0)
+    df["買賣超"] = df["買進"] - df["賣出"]
+
     return df
+
 
 def calc_top5_buy_sell(df):
     result = {}
