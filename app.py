@@ -50,3 +50,4 @@ def debug_histock_branch_top5(stock_id: str):
 
     st.success(f"🟢 前五大買超合計：{buy_top5:,} 張")
     st.error(f"🔴 前五大賣超合計：{sell_top5:,} 張")
+debug_histock_branch_top5("2337")
