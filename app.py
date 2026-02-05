@@ -316,7 +316,7 @@ def render_tab_stock_futures(trade_date):
         st.warning("⚠️ 無成交量資料")
         return
     # ✅ 新增次標題:前20大成交金額
-    st.markdown("### ● 前20大成交金額")
+    st.markdown("### ● 前20大成交金額個股")
     # === 只取前 20 大 ===
     df_view = df.head(20).copy()
 
