@@ -1,4 +1,4 @@
-def debug_branch_top5(stock_id: str, trade_date: dt.date):
+def debug_branch_top5(stock_id, trade_date):
     df = finmind_get(
         "TaiwanStockInstitutionalInvestorsBuySell",
         stock_id,
