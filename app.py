@@ -401,15 +401,16 @@ def fetch_top20_by_amount_twse_csv(trade_date):
     need_cols = ["股票代碼", "股票名稱", "成交量", "成交金額", "收盤"]
     df = df[[c for c in need_cols if c in df.columns]]
 
-    # === 7️⃣ 數值清洗（防空值、防千分號） ===
+    # === 7️⃣ 數值清洗（完全防呆版） ===
     for c in ["成交量", "成交金額", "收盤"]:
         if c in df.columns:
-            df[c] = (
+            df[c] = pd.to_numeric(
                 df[c]
                 .astype(str)
                 .str.replace(",", "", regex=False)
-                .replace("", None)
-                .astype(float)
+                .str.strip()
+                .replace({"": None, "--": None, "---": None, "nan": None}),
+                errors="coerce",
             )
 
     if "成交金額" not in df.columns:
