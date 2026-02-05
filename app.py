@@ -453,30 +453,50 @@ def render_tab_stock_futures(trade_date):
         st.warning("⚠️ 無成交資料")
         return
 
+    # ✅【A】判斷：今日是否真的有收盤資料
+    has_today_close = (
+        "收盤" in df.columns and
+        df["收盤"].notna().any()
+    )
+
+
     st.markdown("### ● 前20大成交金額個股")
-    st.markdown("#### 📥 證交所券商分點資料下載（驗證用）")
-
-    csv_bytes = download_twse_branch_csv(trade_date)
-
-    if csv_bytes:
-        st.download_button(
-            label="⬇️ 下載證交所券商分點 CSV",
-            data=csv_bytes,
-            file_name=f"twse_branch_{trade_date.strftime('%Y%m%d')}.csv",
-            mime="text/csv",
-        )
-        st.success("✅ 成功取得證交所分點資料（請下載檢查）")
+    
+    # ✅【B】只有「今日有收盤」才顯示下載
+    if has_today_close:
+        st.markdown("#### 📥 證交所券商分點資料下載（驗證用）")
+    
+        csv_bytes = download_twse_branch_csv(trade_date)
+        if csv_bytes:
+            st.download_button(
+                label="⬇️ 下載證交所券商分點 CSV",
+                data=csv_bytes,
+                file_name=f"twse_branch_{trade_date.strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+            )
+            st.success("✅ 成功取得證交所分點資料")
+        else:
+            st.error("❌ 無法取得分點資料")
     else:
-        st.error("❌ 無法取得證交所分點資料（可能該日無資料）")
+        st.info("ℹ️ 當日尚未收盤，暫不顯示下載資料")
+    
 
+    
     df_view = df.copy()
 
     df_view["收盤"] = df_view.apply(lambda r: format_close_with_prev(r, trade_date), axis=1)
     df_view["成交量"] = df_view["成交量"].apply(lambda x: f"{int(x/1000):,}" if pd.notna(x) else "-")
     df_view["成交金額"] = df_view["成交金額"].apply(lambda x: f"{x/1_000_000:,.0f} M" if pd.notna(x) else "-")
-    df_view["券商分點"] = df_view["股票代碼"].apply(
-        lambda sid: f"<a href='https://histock.tw/stock/branch.aspx?no={sid}' target='_blank'>🔗</a>"
-    )
+    # ✅【C】券商分點連結受 has_today_close 控制
+    if has_today_close:
+        df_view["券商分點"] = df_view["股票代碼"].apply(
+            lambda sid: (
+                f"<a href='https://histock.tw/stock/branch.aspx?no={sid}' "
+                f"target='_blank'>🔗</a>"
+            )
+        )
+    else:
+        df_view["券商分點"] = ""
 
     display_cols = ["股票代碼", "股票名稱", "收盤", "成交量", "成交金額", "券商分點"]
     render_stock_table_html(df_view[display_cols])
