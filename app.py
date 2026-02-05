@@ -65,6 +65,48 @@ def finmind_get(dataset, data_id, start_date, end_date):
         return pd.DataFrame()
     return pd.DataFrame(j.get("data", []))
 
+@st.cache_data(ttl=600)
+def download_twse_branch_csv(trade_date: dt.date):
+    """
+    從台灣證交所下載 MI_INDEX CSV（正確版本）
+    """
+    url = "https://www.twse.com.tw/exchangeReport/MI_INDEX"
+    params = {
+        "response": "csv",
+        "date": trade_date.strftime("%Y%m%d"),
+        "type": "ALL",
+    }
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0 Safari/537.36"
+        )
+    }
+
+    try:
+        r = requests.get(
+            url,
+            params=params,
+            headers=headers,
+            timeout=20,
+            verify=False,
+        )
+        r.raise_for_status()
+
+        # 用內容判斷，不用大小
+        text = r.content.decode("big5", errors="ignore")
+
+        if "證券代號" not in text:
+            return None
+
+        return r.content
+
+    except Exception as e:
+        return None
+
+
 # =========================
 # 安全工具
 # =========================
@@ -342,6 +384,20 @@ def render_tab_stock_futures(trade_date):
         return
 
     st.markdown("### ● 前20大成交金額個股")
+    st.markdown("#### 📥 證交所券商分點資料下載（驗證用）")
+
+    csv_bytes = download_twse_branch_csv(trade_date)
+
+    if csv_bytes:
+        st.download_button(
+            label="⬇️ 下載證交所券商分點 CSV",
+            data=csv_bytes,
+            file_name=f"twse_branch_{trade_date.strftime('%Y%m%d')}.csv",
+            mime="text/csv",
+        )
+        st.success("✅ 成功取得證交所分點資料（請下載檢查）")
+    else:
+        st.error("❌ 無法取得證交所分點資料（可能該日無資料）")
 
     df_view = df.copy()
 
