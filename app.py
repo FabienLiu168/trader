@@ -454,16 +454,13 @@ def render_tab_stock_futures(trade_date):
         return
 
     # ✅【A】判斷：今日是否真的有收盤資料
-    has_today_close = (
-        "收盤" in df.columns and
-        df["收盤"].notna().any()
-    )
+    has_today_data = (trade_date == get_latest_trading_date())
 
 
     st.markdown("### ● 前20大成交金額個股")
     
     # ✅【B】只有「今日有收盤」才顯示下載
-    if has_today_close:
+    if has_today_data:
         st.markdown("#### 📥 證交所券商分點資料下載（驗證用）")
     
         csv_bytes = download_twse_branch_csv(trade_date)
@@ -474,11 +471,9 @@ def render_tab_stock_futures(trade_date):
                 file_name=f"twse_branch_{trade_date.strftime('%Y%m%d')}.csv",
                 mime="text/csv",
             )
-            st.success("✅ 成功取得證交所分點資料")
-        else:
-            st.error("❌ 無法取得分點資料")
     else:
-        st.info("ℹ️ 當日尚未收盤，暫不顯示下載資料")
+        st.info("ℹ️ 目前顯示的是前一交易日資料，暫不提供下載")
+
     
 
     
