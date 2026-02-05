@@ -65,6 +65,45 @@ def finmind_get(dataset, data_id, start_date, end_date):
         return pd.DataFrame()
     return pd.DataFrame(j.get("data", []))
 
+def fetch_branch_top5_buy_sell(stock_id: str, trade_date: dt.date):
+    """
+    回傳：
+    {
+        "top5_buy": 前五大買超合計,
+        "top5_sell": 前五大賣超合計
+    }
+    """
+    df = finmind_get(
+        "TaiwanStockInstitutionalInvestorsBuySell",
+        stock_id,
+        trade_date.strftime("%Y-%m-%d"),
+        trade_date.strftime("%Y-%m-%d"),
+    )
+
+    if df.empty or "net" not in df.columns:
+        return {"top5_buy": None, "top5_sell": None}
+
+    df["net"] = pd.to_numeric(df["net"], errors="coerce")
+
+    # 前五大買超（net 最大）
+    top5_buy = (
+        df.sort_values("net", ascending=False)
+        .head(5)["net"]
+        .sum()
+    )
+
+    # 前五大賣超（net 最小，取絕對值）
+    top5_sell = (
+        df.sort_values("net")
+        .head(5)["net"]
+        .sum()
+    )
+
+    return {
+        "top5_buy": int(top5_buy),
+        "top5_sell": int(abs(top5_sell)),
+    }
+
 # =========================
 # 安全工具
 # =========================
@@ -352,7 +391,22 @@ def render_tab_stock_futures(trade_date):
         lambda sid: f"<a href='https://histock.tw/stock/branch.aspx?no={sid}' target='_blank'>🔗</a>"
     )
 
-    display_cols = ["股票代碼", "股票名稱", "收盤", "成交量", "成交金額", "券商分點"]
+    # === 券商分點前五大買賣超 ===
+    branch_data = df_view["股票代碼"].apply(
+        lambda sid: fetch_branch_top5_buy_sell(sid, trade_date)
+    )
+    
+    df_view["分點買超"] = branch_data.apply(
+        lambda x: f"{x['top5_buy']:,}" if x["top5_buy"] is not None else "-"
+    )
+    
+    df_view["分點賣超"] = branch_data.apply(
+        lambda x: f"{x['top5_sell']:,}" if x["top5_sell"] is not None else "-"
+    )
+
+    
+    display_cols = ["股票代碼", "股票名稱", "收盤", "成交量", "成交金額", "券商分點", "分點買超",
+    "分點賣超",]
     render_stock_table_html(df_view[display_cols])
 
 # =========================
