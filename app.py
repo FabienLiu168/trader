@@ -410,6 +410,39 @@ def render_tab_stock_futures(trade_date):
     render_stock_table_html(df_view[display_cols])
 
 # =========================
+# 分點前五大買賣超（自動回溯）
+# =========================
+@st.cache_data(ttl=600)
+def fetch_branch_top5_buy_sell(stock_id: str, trade_date: dt.date, lookback=5):
+    for i in range(lookback):
+        d = trade_date - dt.timedelta(days=i)
+        if d.weekday() >= 5:
+            continue
+
+        df = finmind_get(
+            "TaiwanStockInstitutionalInvestorsBuySell",
+            stock_id,
+            d.strftime("%Y-%m-%d"),
+            d.strftime("%Y-%m-%d"),
+        )
+
+        if df.empty or "net" not in df.columns:
+            continue
+
+        df["net"] = pd.to_numeric(df["net"], errors="coerce")
+        df = df.dropna(subset=["net"])
+
+        if df.empty:
+            continue
+
+        top5_buy = df.sort_values("net", ascending=False).head(5)["net"].sum()
+        top5_sell = abs(df.sort_values("net").head(5)["net"].sum())
+
+        return int(top5_buy), int(top5_sell)
+
+    return None, None
+
+# =========================
 # 主流程
 # =========================
 default_trade_date = get_latest_trading_date()
