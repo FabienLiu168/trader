@@ -68,22 +68,28 @@ def finmind_get(dataset, data_id, start_date, end_date):
 @st.cache_data(ttl=600)
 def download_twse_branch_csv(trade_date: dt.date):
     """
-    從台灣證交所下載「券商分點買賣 CSV」
-    僅負責下載，不做解析
+    從台灣證交所下載『券商分點買賣原始 CSV』
+    （MI_INDEX，官方穩定來源）
     """
-    date_str = trade_date.strftime("%Y%m%d")
-
-    url = (
-        "https://www.twse.com.tw/fund/BrokerTrading"
-        f"?response=csv&date={date_str}"
-    )
+    url = "https://www.twse.com.tw/exchangeReport/MI_INDEX"
+    params = {
+        "response": "csv",
+        "date": trade_date.strftime("%Y%m%d"),
+        "type": "ALL",
+    }
 
     try:
-        r = requests.get(url, timeout=20)
+        r = requests.get(url, params=params, timeout=20)
         r.raise_for_status()
+
+        # 檢查內容是否真的有資料
+        if len(r.content) < 1000:
+            return None
+
         return r.content
     except Exception as e:
         return None
+
 
 # =========================
 # 安全工具
