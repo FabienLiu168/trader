@@ -321,7 +321,7 @@ def render_tab_stock_futures(trade_date):
 
     # 成交量：股 → 萬張
     df_view["成交量"] = df_view["成交量"].apply(
-        lambda x: f"{x / 10_000_000:,.2f}" if pd.notna(x) else "-"
+        lambda x: f"{int(x / 10_000_000):,} 萬" if pd.notna(x) else "-"
     )
 
     # 成交金額：元 → M
