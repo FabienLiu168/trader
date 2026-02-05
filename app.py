@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 import io
 import urllib3
+import time
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -341,6 +342,84 @@ def render_stock_table_html(df: pd.DataFrame):
     html += "</tbody></table>"
     st.markdown(html, unsafe_allow_html=True)
 
+def fetch_twse_broker_trade(stock_id: str, trade_date: dt.date) -> pd.DataFrame:
+    """
+    從 TWSE 官方 bsr 系統抓取【單一股票】當日券商買賣明細
+    """
+    roc_year = trade_date.year - 1911
+    date_str = f"{roc_year}/{trade_date.month:02d}/{trade_date.day:02d}"
+
+    session = requests.Session()
+    url = "https://bsr.twse.com.tw/bshtm/bsMenu.aspx"
+
+    # 先 GET 拿頁面（建立 session）
+    r = session.get(url, timeout=10)
+    r.raise_for_status()
+
+    # POST 查詢
+    payload = {
+        "TextBox_Stkno": stock_id,
+        "TextBox_Date": date_str,
+        "Button_Query": "查詢",
+    }
+
+    r2 = session.post(url, data=payload, timeout=10)
+    r2.raise_for_status()
+
+    # 解析 HTML table
+    dfs = pd.read_html(r2.text)
+    df = dfs[-1]  # 真正的券商表通常在最後
+
+    df = df.rename(columns={
+        "證券商": "券商",
+        "買進股數": "買進",
+        "賣出股數": "賣出",
+    })
+
+    for c in ["買進", "賣出"]:
+        df[c] = (
+            df[c]
+            .astype(str)
+            .str.replace(",", "")
+            .astype(float)
+        )
+
+    df["買賣超"] = df["買進"] - df["賣出"]
+
+    return df
+def calc_top5_from_twse(df_broker: pd.DataFrame) -> dict:
+    buy = (
+        df_broker[df_broker["買賣超"] > 0]
+        .nlargest(5, "買賣超")["買賣超"]
+        .sum()
+    )
+
+    sell = (
+        df_broker[df_broker["買賣超"] < 0]
+        .nsmallest(5, "買賣超")["買賣超"]
+        .sum()
+    )
+
+    return {
+        "買超": int(buy),
+        "賣超": int(abs(sell)),
+    }
+@st.cache_data(ttl=3600)
+def fetch_twse_broker_summary(stock_ids, trade_date):
+    result = {}
+
+    for sid in stock_ids:
+        try:
+            df_broker = fetch_twse_broker_trade(sid, trade_date)
+            result[sid] = calc_top5_from_twse(df_broker)
+        except Exception:
+            result[sid] = {"買超": "", "賣超": ""}
+
+        time.sleep(1.2)  # ⚠️ 必須限速，避免被 TWSE 擋
+
+    return result
+
+
 # =========================
 # 第二模組：個股＋籌碼
 # =========================
@@ -415,16 +494,31 @@ def render_tab_stock_futures(trade_date):
     st.subheader("📊 第二模組：個股期貨＋籌碼")
 
     df = fetch_top20_by_amount_twse_csv(trade_date)
+    use_twse = st.checkbox("📡 使用 TWSE 官方券商買賣資料（較慢）", value=False)
+    stock_ids = df["股票代碼"].astype(str).tolist()
+
     if df.empty:
         st.warning("無資料")
         return
-
-    uploaded = st.file_uploader("📤 上傳券商分點 CSV（用於買賣超分析）", type=["csv"])
+        
     summary = {}
+    if use_twse:
+        with st.spinner("📡 讀取 TWSE 官方券商資料中，請稍候..."):
+            summary = fetch_twse_broker_summary(stock_ids, trade_date)
+    
+    else:
+        uploaded = st.file_uploader(
+            "📤 上傳券商分點 CSV（用於買賣超分析）",
+            type=["csv"]
+        )
+        if uploaded:
+            df_branch = parse_branch_csv(uploaded)
+            if df_branch.empty:
+                st.error("❌ CSV 無法解析")
+            else:
+                summary = calc_top5_buy_sell(df_branch)
+                st.success("✅ 已完成券商分點分析")
 
-    if uploaded:
-        summary = calc_top5_buy_sell(parse_branch_csv(uploaded))
-        st.success("已完成券商分點分析")
 
     df["收盤"] = df.apply(lambda r: format_close_with_prev(r, trade_date), axis=1)
     df["成交量"] = df["成交量"].apply(lambda x: f"{int(x/1000):,}")
