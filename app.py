@@ -350,7 +350,6 @@ def render_tab_stock_futures(trade_date):
     # ✅【正確位置】就在這裡呼叫
     render_stock_table_html(df_view[display_cols])
 
-
 # =========================
 # 主流程
 # =========================
