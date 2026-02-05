@@ -143,6 +143,63 @@ def get_prev_stock_close(stock_id: str, trade_date: dt.date):
         return None
     return float(prev.iloc[-1]["close"])
 
+def parse_twse_branch_top5_from_csv(
+    stock_id: str,
+    trade_date: dt.date,
+    base_dir: str = ".",
+):
+    """
+    從本機已下載的證交所分點 CSV
+    計算指定股票的：
+    - 前五大分點買超合計
+    - 前五大分點賣超合計
+    """
+
+    file_name = f"twse_branch_{trade_date.strftime('%Y%m%d')}.csv"
+    file_path = os.path.join(base_dir, file_name)
+
+    if not os.path.exists(file_path):
+        return None, None
+
+    # 讀檔（證交所 CSV 幾乎都是 big5）
+    df = pd.read_csv(file_path, encoding="big5", dtype=str)
+
+    # 🔑 下面欄位名稱需依你實際下載的 CSV 為準
+    # 常見欄位示意：
+    #   股票代碼, 券商, 分點, 買進股數, 賣出股數
+    df = df.rename(columns=lambda x: x.strip())
+
+    if "股票代碼" not in df.columns:
+        return None, None
+
+    df = df[df["股票代碼"] == stock_id]
+
+    if df.empty:
+        return 0, 0
+
+    # 轉數值
+    df["買進股數"] = pd.to_numeric(df["買進股數"], errors="coerce").fillna(0)
+    df["賣出股數"] = pd.to_numeric(df["賣出股數"], errors="coerce").fillna(0)
+
+    # 計算買賣超（股 → 張）
+    df["買賣超"] = (df["買進股數"] - df["賣出股數"]) // 1000
+
+    # 前五大買超
+    top5_buy = (
+        df.sort_values("買賣超", ascending=False)
+        .head(5)["買賣超"]
+        .sum()
+    )
+
+    # 前五大賣超
+    top5_sell = (
+        df.sort_values("買賣超")
+        .head(5)["買賣超"]
+        .sum()
+    )
+
+    return int(top5_buy), int(abs(top5_sell))
+
 
 # =========================
 # 第一模組（保留原樣）
@@ -408,6 +465,24 @@ def render_tab_stock_futures(trade_date):
         lambda sid: f"<a href='https://histock.tw/stock/branch.aspx?no={sid}' target='_blank'>🔗</a>"
     )
 
+    # === 券商分點前五大買賣超（來自證交所 CSV） ===
+    branch_result = df_view["股票代碼"].apply(
+        lambda sid: parse_twse_branch_top5_from_csv(
+            stock_id=sid,
+            trade_date=trade_date,
+            base_dir=".",  # 若你有指定資料夾可改
+        )
+    )
+    
+    df_view["分點買超"] = branch_result.apply(
+        lambda x: f"{x[0]:,}" if x and x[0] is not None else "-"
+    )
+    
+    df_view["分點賣超"] = branch_result.apply(
+        lambda x: f"{x[1]:,}" if x and x[1] is not None else "-"
+    )
+
+    
     display_cols = ["股票代碼", "股票名稱", "收盤", "成交量", "成交金額", "券商分點"]
     render_stock_table_html(df_view[display_cols])
 
