@@ -260,6 +260,33 @@ def render_tab_option_market(trade_date):
         st.metric("🧠 綜合評估", final_today, final_shift)
 
 # =========================
+# HTML 表格 render（支援超連結）
+# =========================
+def render_stock_table_html(df: pd.DataFrame):
+    html = """
+    <table style="width:100%; border-collapse:collapse;">
+        <thead>
+            <tr style="background:#f5f5f5;">
+    """
+
+    for col in df.columns:
+        html += f"<th style='padding:8px;border:1px solid #ddd'>{col}</th>"
+    html += "</tr></thead><tbody>"
+
+    for _, row in df.iterrows():
+        html += "<tr>"
+        for v in row:
+            html += (
+                f"<td style='padding:8px;border:1px solid #ddd;"
+                f"text-align:center'>{v}</td>"
+            )
+        html += "</tr>"
+
+    html += "</tbody></table>"
+    st.markdown(html, unsafe_allow_html=True)
+
+
+# =========================
 # 第二模組
 # =========================
 @st.cache_data(ttl=600)
@@ -329,11 +356,9 @@ def render_tab_stock_futures(trade_date):
         "券商分點",
     ]
 
-    st.dataframe(
-        df_view[display_cols],
-        use_container_width=True
-    )
-
+render_stock_table_html(
+    df_view[display_cols]
+)
 
 # =========================
 # 主流程
