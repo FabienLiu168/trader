@@ -65,6 +65,26 @@ def finmind_get(dataset, data_id, start_date, end_date):
         return pd.DataFrame()
     return pd.DataFrame(j.get("data", []))
 
+@st.cache_data(ttl=600)
+def download_twse_branch_csv(trade_date: dt.date):
+    """
+    從台灣證交所下載「券商分點買賣 CSV」
+    僅負責下載，不做解析
+    """
+    date_str = trade_date.strftime("%Y%m%d")
+
+    url = (
+        "https://www.twse.com.tw/fund/BrokerTrading"
+        f"?response=csv&date={date_str}"
+    )
+
+    try:
+        r = requests.get(url, timeout=20)
+        r.raise_for_status()
+        return r.content
+    except Exception as e:
+        return None
+
 # =========================
 # 安全工具
 # =========================
@@ -342,6 +362,20 @@ def render_tab_stock_futures(trade_date):
         return
 
     st.markdown("### ● 前20大成交金額個股")
+    st.markdown("#### 📥 證交所券商分點資料下載（驗證用）")
+
+    csv_bytes = download_twse_branch_csv(trade_date)
+
+    if csv_bytes:
+        st.download_button(
+            label="⬇️ 下載證交所券商分點 CSV",
+            data=csv_bytes,
+            file_name=f"twse_branch_{trade_date.strftime('%Y%m%d')}.csv",
+            mime="text/csv",
+        )
+        st.success("✅ 成功取得證交所分點資料（請下載檢查）")
+    else:
+        st.error("❌ 無法取得證交所分點資料（可能該日無資料）")
 
     df_view = df.copy()
 
