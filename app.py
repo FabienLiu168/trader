@@ -65,48 +65,6 @@ def finmind_get(dataset, data_id, start_date, end_date):
         return pd.DataFrame()
     return pd.DataFrame(j.get("data", []))
 
-@st.cache_data(ttl=600)
-def download_twse_branch_csv(trade_date: dt.date):
-    """
-    從台灣證交所下載 MI_INDEX CSV（正確版本）
-    """
-    url = "https://www.twse.com.tw/exchangeReport/MI_INDEX"
-    params = {
-        "response": "csv",
-        "date": trade_date.strftime("%Y%m%d"),
-        "type": "ALL",
-    }
-
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0 Safari/537.36"
-        )
-    }
-
-    try:
-        r = requests.get(
-            url,
-            params=params,
-            headers=headers,
-            timeout=20,
-            verify=False,
-        )
-        r.raise_for_status()
-
-        # 用內容判斷，不用大小
-        text = r.content.decode("big5", errors="ignore")
-
-        if "證券代號" not in text:
-            return None
-
-        return r.content
-
-    except Exception as e:
-        return None
-
-
 # =========================
 # 安全工具
 # =========================
@@ -122,7 +80,12 @@ def get_latest_trading_date(max_lookback=10):
         d = today - dt.timedelta(days=i)
         if d.weekday() >= 5:
             continue
-        df = finmind_get("TaiwanStockPrice", "2330", d.strftime("%Y-%m-%d"), d.strftime("%Y-%m-%d"))
+        df = finmind_get(
+            "TaiwanStockPrice",
+            "2330",
+            d.strftime("%Y-%m-%d"),
+            d.strftime("%Y-%m-%d"),
+        )
         if not df.empty:
             return d
     return today
@@ -323,7 +286,7 @@ def render_tab_option_market(trade_date):
         st.metric("🧠 綜合評估", final_today, final_shift)
 
 # =========================
-# HTML 表格 render（支援超連結）
+# HTML 表格 render
 # =========================
 def render_stock_table_html(df: pd.DataFrame):
     html = "<table style='width:100%;border-collapse:collapse;'>"
@@ -331,175 +294,94 @@ def render_stock_table_html(df: pd.DataFrame):
     for c in df.columns:
         html += f"<th style='padding:8px;border:1px solid #ddd'>{c}</th>"
     html += "</tr></thead><tbody>"
-
     for _, row in df.iterrows():
         html += "<tr>"
         for v in row:
             html += f"<td style='padding:8px;border:1px solid #ddd;text-align:center'>{v}</td>"
         html += "</tr>"
-
     html += "</tbody></table>"
     st.markdown(html, unsafe_allow_html=True)
 
 # =========================
-# 第二模組：前20大成交金額
+# 第二模組：個股＋籌碼
 # =========================
-
 @st.cache_data(ttl=600)
 def fetch_top20_by_amount_twse_csv(trade_date):
-    date_str = trade_date.strftime("%Y%m%d")
     url = "https://www.twse.com.tw/exchangeReport/MI_INDEX"
     params = {
         "response": "csv",
-        "date": date_str,
+        "date": trade_date.strftime("%Y%m%d"),
         "type": "ALL",
     }
-
-    # === 1️⃣ 請求資料（原本就有，但補防守） ===
-    try:
-        r = requests.get(url, params=params, timeout=20, verify=False)
-        r.raise_for_status()
-    except Exception:
-        return pd.DataFrame()
-
-    content = r.content.decode("big5", errors="ignore")
-
-    # === 2️⃣ 嚴格篩選「真正的資料列」 ===
-    rows = []
-    for line in content.split("\n"):
-        if not line.startswith('"'):
-            continue
-        cols = line.split('","')
-        if len(cols) < 16:
-            continue
-        rows.append(line)
-
-    # === 3️⃣ 防守：完全沒資料的交易日 ===
+    r = requests.get(url, params=params, timeout=20, verify=False)
+    text = r.content.decode("big5", errors="ignore")
+    rows = [
+        l for l in text.split("\n")
+        if l.startswith('"') and len(l.split('","')) >= 16
+    ]
     if not rows:
         return pd.DataFrame()
 
-    # === 4️⃣ 用 python engine 解析（關鍵） ===
-    try:
-        df = pd.read_csv(
-            io.StringIO("\n".join(rows)),
-            engine="python",
-        )
-    except Exception:
-        return pd.DataFrame()
-
-    # === 5️⃣ 欄位正規化（沿用你原本的命名） ===
-    rename_map = {
+    df = pd.read_csv(io.StringIO("\n".join(rows)), engine="python")
+    df = df.rename(columns={
         "證券代號": "股票代碼",
         "證券名稱": "股票名稱",
         "成交股數": "成交量",
         "成交金額": "成交金額",
         "收盤價": "收盤",
-    }
-    df = df.rename(columns=rename_map)
-
-    # === 6️⃣ 欄位存在性檢查（重要） ===
-    need_cols = ["股票代碼", "股票名稱", "成交量", "成交金額", "收盤"]
-    df = df[[c for c in need_cols if c in df.columns]]
-
-    # === 7️⃣ 數值清洗（完全防呆版） ===
+    })
     for c in ["成交量", "成交金額", "收盤"]:
-        if c in df.columns:
-            df[c] = pd.to_numeric(
-                df[c]
-                .astype(str)
-                .str.replace(",", "", regex=False)
-                .str.strip()
-                .replace({"": None, "--": None, "---": None, "nan": None}),
-                errors="coerce",
-            )
-
-
-    if "成交金額" not in df.columns:
-        return pd.DataFrame()
-
+        df[c] = pd.to_numeric(
+            df[c].astype(str).str.replace(",", ""), errors="coerce"
+        )
     return df.sort_values("成交金額", ascending=False).head(20)
 
+def parse_branch_csv(file):
+    df = pd.read_csv(file)
+    df = df.rename(columns={
+        next(c for c in df.columns if "代號" in c): "股票代碼",
+        next(c for c in df.columns if "買" in c): "買進",
+        next(c for c in df.columns if "賣" in c): "賣出",
+    })
+    df["股票代碼"] = df["股票代碼"].astype(str)
+    df["買賣超"] = pd.to_numeric(df["買進"], errors="coerce") - pd.to_numeric(df["賣出"], errors="coerce")
+    return df
 
-def format_close_with_prev(row, trade_date):
-    close_today = row.get("收盤", None)
-
-    # 今日沒有有效收盤 → 不顯示
-    if close_today is None or pd.isna(close_today):
-        return ""
-
-    prev_close = get_prev_stock_close(row["股票代碼"], trade_date)
-    if prev_close is None or prev_close == 0:
-        return f"{close_today:.2f}"
-
-    diff = close_today - prev_close
-    pct = diff / prev_close * 100
-
-    # 顏色必須「依今日 - 昨日」
-    if diff > 0:
-        color = "#FF3B30"   # 上漲紅
-    elif diff < 0:
-        color = "#34C759"   # 下跌綠
-    else:
-        color = "#000000"
-
-    return (
-        f"<span style='color:{color};font-weight:600'>"
-        f"{close_today:.2f} ({pct:+.2f}%)</span>"
-    )
+def calc_top5_buy_sell(df):
+    result = {}
+    for sid, g in df.groupby("股票代碼"):
+        buy = g[g["買賣超"] > 0].nlargest(5, "買賣超")["買賣超"].sum()
+        sell = g[g["買賣超"] < 0].nsmallest(5, "買賣超")["買賣超"].sum()
+        result[sid] = {"買超": int(buy), "賣超": int(abs(sell))}
+    return result
 
 def render_tab_stock_futures(trade_date):
+    st.subheader("📊 第二模組：個股期貨＋籌碼")
+
     df = fetch_top20_by_amount_twse_csv(trade_date)
     if df.empty:
-        st.warning("⚠️ 無成交資料")
+        st.warning("無資料")
         return
 
-    # ✅【A】判斷：今日是否真的有收盤資料
-    has_today_close = (
-        "收盤" in df.columns and
-        df["收盤"].notna().any()
+    uploaded = st.file_uploader("📤 上傳券商分點 CSV（用於買賣超分析）", type=["csv"])
+    summary = {}
+
+    if uploaded:
+        summary = calc_top5_buy_sell(parse_branch_csv(uploaded))
+        st.success("已完成券商分點分析")
+
+    df["收盤"] = df.apply(lambda r: format_close_with_prev(r, trade_date), axis=1)
+    df["成交量"] = df["成交量"].apply(lambda x: f"{int(x/1000):,}")
+    df["成交金額"] = df["成交金額"].apply(lambda x: f"{x/1_000_000:,.0f} M")
+    df["買超"] = df["股票代碼"].apply(lambda s: f"{summary.get(s,{}).get('買超',''):,}" if s in summary else "")
+    df["賣超"] = df["股票代碼"].apply(lambda s: f"{summary.get(s,{}).get('賣超',''):,}" if s in summary else "")
+    df["券商分點"] = df["股票代碼"].apply(
+        lambda s: f"<a href='https://histock.tw/stock/branch.aspx?no={s}' target='_blank'>🔗</a>"
     )
 
-
-    st.markdown("### ● 前20大成交金額個股")
-    
-    # ✅【B】只有「今日有收盤」才顯示下載
-    if has_today_close:
-        st.markdown("#### 📥 證交所券商分點資料下載（驗證用）")
-    
-        csv_bytes = download_twse_branch_csv(trade_date)
-        if csv_bytes:
-            st.download_button(
-                label="⬇️ 下載證交所券商分點 CSV",
-                data=csv_bytes,
-                file_name=f"twse_branch_{trade_date.strftime('%Y%m%d')}.csv",
-                mime="text/csv",
-            )
-            st.success("✅ 成功取得證交所分點資料")
-        else:
-            st.error("❌ 無法取得分點資料")
-    else:
-        st.info("ℹ️ 當日尚未收盤，暫不顯示下載資料")
-    
-
-    
-    df_view = df.copy()
-
-    df_view["收盤"] = df_view.apply(lambda r: format_close_with_prev(r, trade_date), axis=1)
-    df_view["成交量"] = df_view["成交量"].apply(lambda x: f"{int(x/1000):,}" if pd.notna(x) else "-")
-    df_view["成交金額"] = df_view["成交金額"].apply(lambda x: f"{x/1_000_000:,.0f} M" if pd.notna(x) else "-")
-    # ✅【C】券商分點連結受 has_today_close 控制
-    if has_today_close:
-        df_view["券商分點"] = df_view["股票代碼"].apply(
-            lambda sid: (
-                f"<a href='https://histock.tw/stock/branch.aspx?no={sid}' "
-                f"target='_blank'>🔗</a>"
-            )
-        )
-    else:
-        df_view["券商分點"] = ""
-
-    display_cols = ["股票代碼", "股票名稱", "收盤", "成交量", "成交金額", "券商分點"]
-    render_stock_table_html(df_view[display_cols])
+    render_stock_table_html(
+        df[["股票代碼","股票名稱","收盤","成交量","成交金額","買超","賣超","券商分點"]]
+    )
 
 # =========================
 # 主流程
@@ -508,7 +390,7 @@ default_trade_date = get_latest_trading_date()
 trade_date = st.date_input("📅 查詢交易日", value=default_trade_date)
 
 if not is_trading_day(trade_date):
-    st.warning("📅 非交易日")
+    st.warning("非交易日")
     st.stop()
 
 tab1, tab2 = st.tabs(["📈 期權趨勢", "📊 個股期貨"])
