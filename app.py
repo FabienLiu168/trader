@@ -344,29 +344,79 @@ def render_stock_table_html(df: pd.DataFrame):
 # =========================
 # 第二模組：前20大成交金額
 # =========================
+
 @st.cache_data(ttl=600)
 def fetch_top20_by_amount_twse_csv(trade_date):
     date_str = trade_date.strftime("%Y%m%d")
     url = "https://www.twse.com.tw/exchangeReport/MI_INDEX"
-    params = {"response": "csv", "date": date_str, "type": "ALL"}
-    r = requests.get(url, params=params, timeout=20, verify=False)
+    params = {
+        "response": "csv",
+        "date": date_str,
+        "type": "ALL",
+    }
+
+    # === 1️⃣ 請求資料（原本就有，但補防守） ===
+    try:
+        r = requests.get(url, params=params, timeout=20, verify=False)
+        r.raise_for_status()
+    except Exception:
+        return pd.DataFrame()
+
     content = r.content.decode("big5", errors="ignore")
 
-    lines = [l for l in content.split("\n") if l.startswith('"') and len(l.split('","')) >= 16]
-    df = pd.read_csv(io.StringIO("\n".join(lines)))
+    # === 2️⃣ 嚴格篩選「真正的資料列」 ===
+    rows = []
+    for line in content.split("\n"):
+        if not line.startswith('"'):
+            continue
+        cols = line.split('","')
+        if len(cols) < 16:
+            continue
+        rows.append(line)
 
-    df = df.rename(columns={
+    # === 3️⃣ 防守：完全沒資料的交易日 ===
+    if not rows:
+        return pd.DataFrame()
+
+    # === 4️⃣ 用 python engine 解析（關鍵） ===
+    try:
+        df = pd.read_csv(
+            io.StringIO("\n".join(rows)),
+            engine="python",
+        )
+    except Exception:
+        return pd.DataFrame()
+
+    # === 5️⃣ 欄位正規化（沿用你原本的命名） ===
+    rename_map = {
         "證券代號": "股票代碼",
         "證券名稱": "股票名稱",
         "成交股數": "成交量",
         "成交金額": "成交金額",
         "收盤價": "收盤",
-    })
+    }
+    df = df.rename(columns=rename_map)
 
+    # === 6️⃣ 欄位存在性檢查（重要） ===
+    need_cols = ["股票代碼", "股票名稱", "成交量", "成交金額", "收盤"]
+    df = df[[c for c in need_cols if c in df.columns]]
+
+    # === 7️⃣ 數值清洗（防空值、防千分號） ===
     for c in ["成交量", "成交金額", "收盤"]:
-        df[c] = pd.to_numeric(df[c].astype(str).str.replace(",", ""), errors="coerce")
+        if c in df.columns:
+            df[c] = (
+                df[c]
+                .astype(str)
+                .str.replace(",", "", regex=False)
+                .replace("", None)
+                .astype(float)
+            )
+
+    if "成交金額" not in df.columns:
+        return pd.DataFrame()
 
     return df.sort_values("成交金額", ascending=False).head(20)
+
 
 def format_close_with_prev(row, trade_date):
     close_today = row["收盤"]
