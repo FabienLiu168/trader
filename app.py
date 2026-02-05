@@ -1,4 +1,3 @@
-
 # app.py
 # -*- coding: utf-8 -*-
 
@@ -24,7 +23,6 @@ st.markdown(
     .bull{color:#FF3B30}
     .bear{color:#34C759}
     .neut{color:#000000}
-    table {font-size:16px;}
     </style>
     """,
     unsafe_allow_html=True,
@@ -86,26 +84,6 @@ def get_latest_trading_date(max_lookback=10):
             return d
     return today
 
-@st.cache_data(ttl=600)
-def get_prev_stock_close(stock_id: str, trade_date: dt.date):
-    df = finmind_get(
-        "TaiwanStockPrice",
-        stock_id,
-        (trade_date - dt.timedelta(days=7)).strftime("%Y-%m-%d"),
-        trade_date.strftime("%Y-%m-%d"),
-    )
-    if df.empty:
-        return None
-    df = df.sort_values("date")
-    prev = df[df["date"] < trade_date.strftime("%Y-%m-%d")]
-    if prev.empty:
-        return None
-    return float(prev.iloc[-1]["close"])
-
-
-# =========================
-# 第一模組（保留原樣）
-# =========================
 # =========================
 # 外資期貨 OI（安全版）
 # =========================
@@ -285,26 +263,34 @@ def render_tab_option_market(trade_date):
 # HTML 表格 render（支援超連結）
 # =========================
 def render_stock_table_html(df: pd.DataFrame):
-    html = "<table style='width:100%;border-collapse:collapse;'>"
-    html += "<thead><tr style='background:#f5f5f5;'>"
-    for c in df.columns:
-        html += f"<th style='padding:8px;border:1px solid #ddd'>{c}</th>"
+    html = """
+    <table style="width:100%; border-collapse:collapse;">
+        <thead>
+            <tr style="background:#f5f5f5;">
+    """
+
+    for col in df.columns:
+        html += f"<th style='padding:8px;border:1px solid #ddd'>{col}</th>"
     html += "</tr></thead><tbody>"
 
     for _, row in df.iterrows():
         html += "<tr>"
         for v in row:
-            html += f"<td style='padding:8px;border:1px solid #ddd;text-align:center'>{v}</td>"
+            html += (
+                f"<td style='padding:8px;border:1px solid #ddd;"
+                f"text-align:center'>{v}</td>"
+            )
         html += "</tr>"
 
     html += "</tbody></table>"
     st.markdown(html, unsafe_allow_html=True)
 
+
 # =========================
-# 第二模組：前20大成交金額
+# 第二模組
 # =========================
 @st.cache_data(ttl=600)
-def fetch_top20_by_amount_twse_csv(trade_date):
+def fetch_top20_by_volume_twse_csv(trade_date):
     date_str = trade_date.strftime("%Y%m%d")
     url = "https://www.twse.com.tw/exchangeReport/MI_INDEX"
     params = {"response": "csv", "date": date_str, "type": "ALL"}
@@ -313,7 +299,6 @@ def fetch_top20_by_amount_twse_csv(trade_date):
 
     lines = [l for l in content.split("\n") if l.startswith('"') and len(l.split('","')) >= 16]
     df = pd.read_csv(io.StringIO("\n".join(lines)))
-
     df = df.rename(columns={
         "證券代號": "股票代碼",
         "證券名稱": "股票名稱",
@@ -321,40 +306,50 @@ def fetch_top20_by_amount_twse_csv(trade_date):
         "成交金額": "成交金額",
         "收盤價": "收盤",
     })
-
     for c in ["成交量", "成交金額", "收盤"]:
         df[c] = pd.to_numeric(df[c].astype(str).str.replace(",", ""), errors="coerce")
-
     return df.sort_values("成交金額", ascending=False).head(20)
 
-def format_close_with_prev(row, trade_date):
-    close_today = row["收盤"]
-    prev_close = get_prev_stock_close(row["股票代碼"], trade_date)
-    if prev_close is None or pd.isna(close_today):
-        return f"{close_today:.2f}"
-    pct = (close_today - prev_close) / prev_close * 100
-    color = "#34C759" if pct > 0 else "#FF3B30" if pct < 0 else "#000000"
-    return f"<span style='color:{color};font-weight:600'>{close_today:.2f} ({pct:+.2f}%)</span>"
-
 def render_tab_stock_futures(trade_date):
-    df = fetch_top20_by_amount_twse_csv(trade_date)
+    df = fetch_top20_by_volume_twse_csv(trade_date)
     if df.empty:
-        st.warning("⚠️ 無成交資料")
+        st.warning("⚠️ 無成交量資料")
         return
-
+    # ✅ 新增次標題:前20大成交金額
     st.markdown("### ● 前20大成交金額個股")
+    # === 只取前 20 大 ===
+    df_view = df.head(20).copy()
 
-    df_view = df.copy()
-
-    df_view["收盤"] = df_view.apply(lambda r: format_close_with_prev(r, trade_date), axis=1)
-    df_view["成交量"] = df_view["成交量"].apply(lambda x: f"{int(x/1000):,}" if pd.notna(x) else "-")
-    df_view["成交金額"] = df_view["成交金額"].apply(lambda x: f"{x/1_000_000:,.0f} M" if pd.notna(x) else "-")
-    df_view["券商分點"] = df_view["股票代碼"].apply(
-        lambda sid: f"<a href='https://histock.tw/stock/branch.aspx?no={sid}' target='_blank'>🔗</a>"
+    # 成交量：股 → 萬張
+    df_view["成交量"] = df_view["成交量"].apply(
+        lambda x: f"{int(x / 1_000):,} " if pd.notna(x) else "-"
     )
 
-    display_cols = ["股票代碼", "股票名稱", "收盤", "成交量", "成交金額", "券商分點"]
+    # 成交金額：元 → M
+    df_view["成交金額"] = df_view["成交金額"].apply(
+        lambda x: f"{x / 1_000_000:,.0f} M" if pd.notna(x) else "-"
+    )
+
+    # 券商分點超連結
+    df_view["券商分點"] = df_view["股票代碼"].apply(
+        lambda sid: (
+            f"<a href='https://histock.tw/stock/branch.aspx?no={sid}' "
+            f"target='_blank' style='text-decoration:none;font-weight:700;'>🔗</a>"
+        )
+    )
+
+    display_cols = [
+        "股票代碼",
+        "股票名稱",
+        "收盤",
+        "成交量",
+        "成交金額",
+        "券商分點",
+    ]
+
+    # ✅【正確位置】就在這裡呼叫
     render_stock_table_html(df_view[display_cols])
+
 
 # =========================
 # 主流程
