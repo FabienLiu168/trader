@@ -421,13 +421,31 @@ def fetch_top20_by_amount_twse_csv(trade_date):
 
 
 def format_close_with_prev(row, trade_date):
-    close_today = row["收盤"]
+    close_today = row.get("收盤", None)
+
+    # 今日沒有有效收盤 → 不顯示
+    if close_today is None or pd.isna(close_today):
+        return ""
+
     prev_close = get_prev_stock_close(row["股票代碼"], trade_date)
-    if prev_close is None or pd.isna(close_today):
+    if prev_close is None or prev_close == 0:
         return f"{close_today:.2f}"
-    pct = (close_today - prev_close) / prev_close * 100
-    color = "#34C759" if pct > 0 else "#FF3B30" if pct < 0 else "#000000"
-    return f"<span style='color:{color};font-weight:600'>{close_today:.2f} ({pct:+.2f}%)</span>"
+
+    diff = close_today - prev_close
+    pct = diff / prev_close * 100
+
+    # 顏色必須「依今日 - 昨日」
+    if diff > 0:
+        color = "#FF3B30"   # 上漲紅
+    elif diff < 0:
+        color = "#34C759"   # 下跌綠
+    else:
+        color = "#000000"
+
+    return (
+        f"<span style='color:{color};font-weight:600'>"
+        f"{close_today:.2f} ({pct:+.2f}%)</span>"
+    )
 
 def render_tab_stock_futures(trade_date):
     df = fetch_top20_by_amount_twse_csv(trade_date)
