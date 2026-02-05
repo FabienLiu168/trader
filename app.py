@@ -308,7 +308,7 @@ def fetch_top20_by_volume_twse_csv(trade_date):
     })
     for c in ["成交量", "成交金額", "收盤"]:
         df[c] = pd.to_numeric(df[c].astype(str).str.replace(",", ""), errors="coerce")
-    return df.sort_values("成交量", ascending=False).head(20)
+    return df.sort_values("成交金額", ascending=False).head(20)
 
 def render_tab_stock_futures(trade_date):
     df = fetch_top20_by_volume_twse_csv(trade_date)
