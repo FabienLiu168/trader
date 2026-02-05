@@ -68,8 +68,7 @@ def finmind_get(dataset, data_id, start_date, end_date):
 @st.cache_data(ttl=600)
 def download_twse_branch_csv(trade_date: dt.date):
     """
-    從台灣證交所下載『券商分點買賣原始 CSV』
-    （MI_INDEX，官方穩定來源）
+    從台灣證交所下載 MI_INDEX CSV（正確版本）
     """
     url = "https://www.twse.com.tw/exchangeReport/MI_INDEX"
     params = {
@@ -78,15 +77,32 @@ def download_twse_branch_csv(trade_date: dt.date):
         "type": "ALL",
     }
 
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0 Safari/537.36"
+        )
+    }
+
     try:
-        r = requests.get(url, params=params, timeout=20)
+        r = requests.get(
+            url,
+            params=params,
+            headers=headers,
+            timeout=20,
+            verify=False,
+        )
         r.raise_for_status()
 
-        # 檢查內容是否真的有資料
-        if len(r.content) < 1000:
+        # 用內容判斷，不用大小
+        text = r.content.decode("big5", errors="ignore")
+
+        if "證券代號" not in text:
             return None
 
         return r.content
+
     except Exception as e:
         return None
 
