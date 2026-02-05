@@ -319,24 +319,17 @@ def render_tab_stock_futures(trade_date):
     # === 只取前 20 大 ===
     df_view = df.head(20).copy()
 
-    # =========================
-    # ✅ 1️⃣ 成交量：股 → 萬張
-    # 1 萬張 = 10,000,000 股
-    # =========================
+    # 成交量：股 → 萬張
     df_view["成交量"] = df_view["成交量"].apply(
         lambda x: f"{x / 10_000_000:,.2f}" if pd.notna(x) else "-"
     )
 
-    # =========================
-    # ✅ 2️⃣ 成交金額：元 → M（百萬）
-    # =========================
+    # 成交金額：元 → M
     df_view["成交金額"] = df_view["成交金額"].apply(
         lambda x: f"{x / 1_000_000:,.0f} M" if pd.notna(x) else "-"
     )
 
-    # =========================
-    # ✅ 3️⃣ 券商分點超連結
-    # =========================
+    # 券商分點超連結
     df_view["券商分點"] = df_view["股票代碼"].apply(
         lambda sid: (
             f"<a href='https://histock.tw/stock/branch.aspx?no={sid}' "
@@ -344,21 +337,18 @@ def render_tab_stock_futures(trade_date):
         )
     )
 
-    # =========================
-    # 最終顯示欄位順序
-    # =========================
     display_cols = [
         "股票代碼",
         "股票名稱",
         "收盤",
-        "成交量",      # 單位：萬張
-        "成交金額",    # 單位：M
+        "成交量",
+        "成交金額",
         "券商分點",
     ]
 
-render_stock_table_html(
-    df_view[display_cols]
-)
+    # ✅【正確位置】就在這裡呼叫
+    render_stock_table_html(df_view[display_cols])
+
 
 # =========================
 # 主流程
