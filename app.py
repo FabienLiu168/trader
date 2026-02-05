@@ -84,6 +84,31 @@ def get_latest_trading_date(max_lookback=10):
             return d
     return today
 
+@st.cache_data(ttl=600)
+def get_prev_stock_close(stock_id: str, trade_date: dt.date):
+    """
+    取得指定股票的「昨日收盤價」
+    """
+    df = finmind_get(
+        "TaiwanStockPrice",
+        stock_id,
+        (trade_date - dt.timedelta(days=7)).strftime("%Y-%m-%d"),
+        trade_date.strftime("%Y-%m-%d"),
+    )
+
+    if df.empty:
+        return None
+
+    df = df.sort_values("date")
+
+    # 找出 < trade_date 的最後一筆
+    prev = df[df["date"] < trade_date.strftime("%Y-%m-%d")]
+    if prev.empty:
+        return None
+
+    return float(prev.iloc[-1]["close"])
+
+
 # =========================
 # 外資期貨 OI（安全版）
 # =========================
@@ -315,10 +340,43 @@ def render_tab_stock_futures(trade_date):
     if df.empty:
         st.warning("⚠️ 無成交量資料")
         return
+
+def format_close_with_prev(row, trade_date):
+    try:
+        close_today = row["收盤"]
+        prev_close = get_prev_stock_close(row["股票代碼"], trade_date)
+
+        if prev_close is None or pd.isna(close_today):
+            return f"{close_today:.2f}"
+
+        pct = (close_today - prev_close) / prev_close * 100
+
+        # 顏色規則（依你指定）
+        if pct > 0:
+            color = "#34C759"   # 綠
+        elif pct < 0:
+            color = "#FF3B30"   # 紅
+        else:
+            color = "#000000"   # 原色
+
+        return (
+            f"<span style='color:{color};font-weight:600'>"
+            f"{close_today:.2f} ({pct:+.2f}%)"
+            f"</span>"
+        )
+    except Exception:
+        return row["收盤"]
+
+
     # ✅ 新增次標題:前20大成交金額
     st.markdown("### ● 前20大成交金額個股")
     # === 只取前 20 大 ===
     df_view = df.head(20).copy()
+
+    df_view["收盤"] = df_view.apply(
+        lambda r: format_close_with_prev(r, trade_date),
+        axis=1
+    )
 
     # 成交量：股 → 萬張
     df_view["成交量"] = df_view["成交量"].apply(
@@ -337,7 +395,7 @@ def render_tab_stock_futures(trade_date):
             f"target='_blank' style='text-decoration:none;font-weight:700;'>🔗</a>"
         )
     )
-
+    
     display_cols = [
         "股票代碼",
         "股票名稱",
