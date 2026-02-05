@@ -14,8 +14,8 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # =========================
 # 基本設定
 # =========================
-st.set_page_config(page_title="O'發哥操盤室", layout="wide")
-APP_TITLE = "O'發哥操盤室"
+st.set_page_config(page_title="O'法哥操盤室", layout="wide")
+APP_TITLE = "O'法哥操盤室"
 
 st.markdown(
     """
