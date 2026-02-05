@@ -413,6 +413,7 @@ def fetch_top20_by_amount_twse_csv(trade_date):
                 errors="coerce",
             )
 
+
     if "成交金額" not in df.columns:
         return pd.DataFrame()
 
