@@ -483,7 +483,7 @@ def render_tab_stock_futures(trade_date):
     df_view["成交量"] = df_view["成交量"].apply(lambda x: f"{int(x/1000):,}" if pd.notna(x) else "-")
     df_view["成交金額"] = df_view["成交金額"].apply(lambda x: f"{x/1_000_000:,.0f} M" if pd.notna(x) else "-")
     # ✅【C】券商分點連結受 has_today_close 控制
-    if has_today_close:
+    if has_today_data:
         df_view["券商分點"] = df_view["股票代碼"].apply(
             lambda sid: (
                 f"<a href='https://histock.tw/stock/branch.aspx?no={sid}' "
