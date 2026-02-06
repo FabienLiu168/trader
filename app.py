@@ -29,6 +29,8 @@ st.markdown(
     /* =======================
        查詢日期（date_input）
        ======================= */
+    st.info(f"📅 查詢交易日：{trade_date.strftime('%Y-%m-%d')}")
+      
     label {
         font-size: 20px !important;
         font-weight: 600;
@@ -578,6 +580,26 @@ def render_tab_stock_futures(trade_date):
 # =========================
 # 主流程
 # =========================
+st.markdown("### 🔎 券商分點下載來源確認（Step 1）")
+
+if st.button("① 下載並確認『當日』券商分點資料（樣本：2330）"):
+    with st.spinner("正在下載 TWSE 券商分點資料..."):
+        df_check = fetch_twse_broker_trade("2330", trade_date)
+
+    if df_check.empty:
+        st.error("❌ 未取得資料，請確認是否為有效交易日")
+    else:
+        st.success(
+            f"✅ 已成功下載【{trade_date.strftime('%Y-%m-%d')}】"
+            f" 之『券商分點買賣日報』（股票：2330）"
+        )
+
+        st.caption(
+            f"資料來源：TWSE bsr 系統｜查詢日期：{trade_date.strftime('%Y-%m-%d')}"
+        )
+
+        st.dataframe(df_check.head(10))
+
 default_trade_date = get_latest_trading_date()
 trade_date = st.date_input("📅 查詢交易日", value=default_trade_date)
 
