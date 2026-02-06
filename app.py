@@ -85,52 +85,74 @@ def fetch_top20_by_amount_twse_csv(trade_date):
 
     return df.sort_values("成交金額", ascending=False).head(20)
 
-def parse_branch_csv(file, stock_id: str):
-    """
-    解析 TWSE 券商分點 CSV（單一股票）
-    """
-    # 1️⃣ 嘗試多種編碼（TWSE 常是 Big5）
+def parse_branch_csv(file):
     try:
-        df = pd.read_csv(file, encoding="utf-8")
+        # TWSE 分點檔固定是 Big5
+        raw = pd.read_csv(file, encoding="big5", header=None)
     except Exception:
-        try:
-            df = pd.read_csv(file, encoding="big5")
-        except Exception:
-            return pd.DataFrame()
-
-    # 2️⃣ 欄位正規化（依 TWSE 真實欄位）
-    col_map = {}
-    for c in df.columns:
-        if "買進" in c:
-            col_map[c] = "買進"
-        elif "賣出" in c:
-            col_map[c] = "賣出"
-
-    df = df.rename(columns=col_map)
-
-    if not {"買進", "賣出"}.issubset(df.columns):
         return pd.DataFrame()
 
-    # 3️⃣ 數值清洗
-    df["買進"] = pd.to_numeric(df["買進"].astype(str).str.replace(",", ""), errors="coerce").fillna(0)
-    df["賣出"] = pd.to_numeric(df["賣出"].astype(str).str.replace(",", ""), errors="coerce").fillna(0)
+    # 至少要有資料列
+    if raw.shape[0] < 3:
+        return pd.DataFrame()
 
-    # 4️⃣ 補上股票代碼（關鍵！）
-    df["股票代碼"] = str(stock_id)
+    rows = []
 
-    # 5️⃣ 買賣超
+    # 從第 3 行開始才是真正資料
+    for _, r in raw.iloc[2:].iterrows():
+        r = r.tolist()
+
+        # 左半邊券商
+        if len(r) >= 5 and pd.notna(r[1]):
+            rows.append({
+                "券商": str(r[1]).strip(),
+                "買進": pd.to_numeric(r[3], errors="coerce"),
+                "賣出": pd.to_numeric(r[4], errors="coerce"),
+            })
+
+        # 右半邊券商
+        if len(r) >= 11 and pd.notna(r[7]):
+            rows.append({
+                "券商": str(r[7]).strip(),
+                "買進": pd.to_numeric(r[9], errors="coerce"),
+                "賣出": pd.to_numeric(r[10], errors="coerce"),
+            })
+
+    df = pd.DataFrame(rows)
+
+    if df.empty:
+        return pd.DataFrame()
+
+    df["買進"] = df["買進"].fillna(0)
+    df["賣出"] = df["賣出"].fillna(0)
     df["買賣超"] = df["買進"] - df["賣出"]
 
     return df
 
 
 def calc_top5_buy_sell(df):
-    result = {}
-    for sid, g in df.groupby("股票代碼"):
-        buy = g[g["買賣超"] > 0].nlargest(5, "買賣超")["買賣超"].sum()
-        sell = g[g["買賣超"] < 0].nsmallest(5, "買賣超")["買賣超"].sum()
-        result[sid] = {"買超": int(buy), "賣超": int(abs(sell))}
-    return result
+    if df.empty or "買賣超" not in df.columns:
+        return {}
+
+    top_buy = (
+        df[df["買賣超"] > 0]
+        .sort_values("買賣超", ascending=False)
+        .head(5)["買賣超"]
+        .sum()
+    )
+
+    top_sell = (
+        df[df["買賣超"] < 0]
+        .sort_values("買賣超")
+        .head(5)["買賣超"]
+        .sum()
+    )
+
+    return {
+        "買超": int(top_buy),
+        "賣超": int(abs(top_sell)),
+    }
+
 
 
 # =========================
