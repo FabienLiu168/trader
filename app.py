@@ -112,9 +112,9 @@ def calc_top5_buy_sell(df):
     }
 
 
+
 def parse_branch_csv(file):
     try:
-        # TWSE 分點 CSV 一定是 Big5、而且沒有 header
         raw = pd.read_csv(
             file,
             encoding="big5",
@@ -122,7 +122,6 @@ def parse_branch_csv(file):
             engine="python",
             sep=r"\s+",
         )
-
     except Exception as e:
         st.error(f"讀檔失敗：{e}")
         return pd.DataFrame()
@@ -133,26 +132,26 @@ def parse_branch_csv(file):
 
     rows = []
 
-    # 從第 3 列開始才是真正資料
+    # 從第 3 行開始（跳過標題）
     for _, r in raw.iloc[2:].iterrows():
         r = r.tolist()
 
-        # === 左半邊券商 ===
+        # 左半邊券商
         # [序號, 券商, 價格, 買進, 賣出]
-        if len(r) >= 5 and pd.notna(r[1]):
+        if len(r) >= 5 and str(r[1]).strip().isdigit() is False:
             rows.append({
                 "券商": str(r[1]).strip(),
                 "買進": pd.to_numeric(r[3], errors="coerce"),
                 "賣出": pd.to_numeric(r[4], errors="coerce"),
             })
 
-        # === 右半邊券商 ===
-        # [序號, 券商, 價格, 買進, 賣出] 在 index 6~10
-        if len(r) >= 11 and pd.notna(r[7]):
+        # 右半邊券商
+        # 通常在 index 5~9
+        if len(r) >= 10:
             rows.append({
-                "券商": str(r[7]).strip(),
-                "買進": pd.to_numeric(r[9], errors="coerce"),
-                "賣出": pd.to_numeric(r[10], errors="coerce"),
+                "券商": str(r[6]).strip(),
+                "買進": pd.to_numeric(r[8], errors="coerce"),
+                "賣出": pd.to_numeric(r[9], errors="coerce"),
             })
 
     df = pd.DataFrame(rows)
