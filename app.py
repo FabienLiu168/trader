@@ -397,7 +397,7 @@ def fetch_twse_broker_trade(stock_id: str, trade_date: dt.date) -> pd.DataFrame:
     url = "https://bsr.twse.com.tw/bshtm/bsMenu.aspx"
 
     # 先 GET 拿頁面（建立 session）
-    r = session.get(url, timeout=10)
+    r = session.get(url, timeout=10, verify=False)
     r.raise_for_status()
 
     # POST 查詢
@@ -407,12 +407,11 @@ def fetch_twse_broker_trade(stock_id: str, trade_date: dt.date) -> pd.DataFrame:
         "Button_Query": "查詢",
     }
 
-    r2 = session.post(url, data=payload, timeout=10)
+    r2 = session.post(url, data=payload, timeout=10, verify=False)
     r2.raise_for_status()
 
-    # 解析 HTML table
     dfs = pd.read_html(r2.text)
-    df = dfs[-1]  # 真正的券商表通常在最後
+    df = dfs[-1]
 
     df = df.rename(columns={
         "證券商": "券商",
@@ -431,6 +430,8 @@ def fetch_twse_broker_trade(stock_id: str, trade_date: dt.date) -> pd.DataFrame:
     df["買賣超"] = df["買進"] - df["賣出"]
 
     return df
+
+    
 def calc_top5_from_twse(df_broker: pd.DataFrame) -> dict:
     buy = (
         df_broker[df_broker["買賣超"] > 0]
