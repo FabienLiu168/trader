@@ -580,6 +580,16 @@ def render_tab_stock_futures(trade_date):
 # =========================
 # 主流程
 # =========================
+default_trade_date = get_latest_trading_date()
+trade_date = st.date_input("📅 查詢交易日", value=default_trade_date)
+
+st.info(f"📅 目前選定查詢交易日：{trade_date.strftime('%Y-%m-%d')}")
+
+if not is_trading_day(trade_date):
+    st.warning("非交易日")
+    st.stop()
+
+# ===== Step 1：下載來源確認（一定要放在 trade_date 之後）=====
 st.markdown("### 🔎 券商分點下載來源確認（Step 1）")
 
 if st.button("① 下載並確認『當日』券商分點資料（樣本：2330）"):
@@ -595,20 +605,15 @@ if st.button("① 下載並確認『當日』券商分點資料（樣本：2330�
         )
 
         st.caption(
-            f"資料來源：TWSE bsr 系統｜查詢日期：{trade_date.strftime('%Y-%m-%d')}"
+            f"資料來源：TWSE bsr｜查詢日期：{trade_date.strftime('%Y-%m-%d')}"
         )
 
         st.dataframe(df_check.head(10))
 
-default_trade_date = get_latest_trading_date()
-trade_date = st.date_input("📅 查詢交易日", value=default_trade_date)
-
-if not is_trading_day(trade_date):
-    st.warning("非交易日")
-    st.stop()
-
+# ===== Tabs（保持原樣）=====
 tab1, tab2 = st.tabs(["📈 期權趨勢", "📊 個股期貨"])
 with tab1:
     render_tab_option_market(trade_date)
 with tab2:
     render_tab_stock_futures(trade_date)
+
