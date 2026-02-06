@@ -249,9 +249,9 @@ def render_tab_stock_futures(trade_date):
                 st.error(f"❌ {sid} CSV 無法解析")
             else:
                 result = calc_top5_buy_sell(df_branch)
-                if sid in result:
-                    st.session_state.broker_done[sid] = result[sid]
-                    st.success(f"✅ {sid} 買賣超已完成")
+                st.session_state.broker_done[sid] = result
+                st.success(f"✅ {sid} 買賣超已完成")
+                st.experimental_rerun()
 
 
 # =========================
