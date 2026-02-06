@@ -266,6 +266,17 @@ def spot_confirm_engine(spot):
         return {"confirm": False, "reason": "跌家數多"}
     return {"confirm": False, "reason": "量能不足"}
 
+def fut_trend_engine(price_today, price_prev, oi_today, oi_prev):
+    price_diff = price_today - price_prev
+    oi_diff = oi_today - oi_prev
+
+    if price_diff > 0 and oi_diff > 0:
+        return "趨勢多", "bull", price_diff, oi_diff
+    if price_diff < 0 and oi_diff > 0:
+        return "趨勢空", "bear", price_diff, oi_diff
+    if oi_diff < 0:
+        return "震盪", "neut", price_diff, oi_diff
+    return "中性", "neut", price_diff, oi_diff
 
 # =========================
 # KPI & 主頁
@@ -301,6 +312,55 @@ def render_tab_option_market(trade_date):
 
     st.subheader("📊 大盤分析")
     st.metric("📈 期貨趨勢", fut_dir, f"價差 {price_diff:+.0f}｜OI {oi_disp}")
+
+
+@st.cache_data(ttl=600)
+def fetch_top20_by_amount_twse_csv(trade_date):
+    url = "https://www.twse.com.tw/exchangeReport/MI_INDEX"
+    params = {
+        "response": "csv",
+        "date": trade_date.strftime("%Y%m%d"),
+        "type": "ALL",
+    }
+
+    r = requests.get(url, params=params, timeout=20, verify=False)
+    text = r.content.decode("big5", errors="ignore")
+
+    rows = [
+        l for l in text.split("\n")
+        if l.startswith('"') and len(l.split('","')) >= 16
+    ]
+    if not rows:
+        return pd.DataFrame()
+
+    df = pd.read_csv(io.StringIO("\n".join(rows)), engine="python")
+    df = df.rename(columns={
+        "證券代號": "股票代碼",
+        "證券名稱": "股票名稱",
+        "成交股數": "成交量",
+        "成交金額": "成交金額",
+        "收盤價": "收盤",
+    })
+
+    for c in ["成交量", "成交金額", "收盤"]:
+        df[c] = pd.to_numeric(df[c].astype(str).str.replace(",", ""), errors="coerce")
+
+    return df.sort_values("成交金額", ascending=False).head(20)
+
+def fetch_twse_broker_summary(stock_ids, trade_date):
+    return {}
+
+def parse_branch_csv(file):
+    return pd.DataFrame()
+
+def calc_top5_buy_sell(df):
+    return {}
+
+def twse_bsr_hint_link(stock_id, trade_date):
+    return "🔍"
+
+def render_stock_table_html(df):
+    st.dataframe(df)
 
 def render_tab_stock_futures(trade_date):
     st.subheader("📊 前20大個股盤後籌碼")
