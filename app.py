@@ -85,62 +85,7 @@ def fetch_top20_by_amount_twse_csv(trade_date):
 
     return df.sort_values("成交金額", ascending=False).head(20)
 
-def parse_branch_csv(file):
-    """
-    解析 TWSE 券商分點『純文字格式』CSV（例如 2330.csv）
-    """
-    try:
-        # 直接當純文字讀
-        text = file.read().decode("big5", errors="ignore")
-    except Exception:
-        return pd.DataFrame()
 
-    lines = text.splitlines()
-
-    rows = []
-
-    for line in lines:
-        # 略過說明列
-        if "券商買賣股票成交價量資訊" in line:
-            continue
-        if line.strip().startswith("股票代碼"):
-            continue
-        if line.strip().startswith("序號"):
-            continue
-
-        # 用空白切（同時處理全形空白）
-        parts = line.replace("　", " ").split()
-
-        # 至少要有左邊一組
-        if len(parts) >= 5:
-            # 左半部
-            try:
-                rows.append({
-                    "券商": parts[1],
-                    "買進": int(parts[3]),
-                    "賣出": int(parts[4]),
-                })
-            except Exception:
-                pass
-
-        # 右半部（有些行會有）
-        if len(parts) >= 11:
-            try:
-                rows.append({
-                    "券商": parts[7],
-                    "買進": int(parts[9]),
-                    "賣出": int(parts[10]),
-                })
-            except Exception:
-                pass
-
-    if not rows:
-        return pd.DataFrame()
-
-    df = pd.DataFrame(rows)
-    df["買賣超"] = df["買進"] - df["賣出"]
-
-    return df
 
 
 def calc_top5_buy_sell(df):
@@ -166,6 +111,66 @@ def calc_top5_buy_sell(df):
         "賣超": int(abs(top_sell)),
     }
 
+def parse_branch_csv(file):
+    """
+    專門解析 TWSE 券商分點 CSV（如 2330.csv）
+    支援：
+    - Big5 編碼
+    - 前置說明列
+    - 左右雙欄券商格式
+    """
+    try:
+        raw = pd.read_csv(
+            file,
+            encoding="big5",
+            header=None,
+            engine="python"
+        )
+    except Exception:
+        return pd.DataFrame()
+
+    # 至少要有資料
+    if raw.shape[0] < 5:
+        return pd.DataFrame()
+
+    rows = []
+
+    # 從第 2 行之後才是資料（前兩行是標題說明）
+    for _, r in raw.iloc[2:].iterrows():
+        r = r.tolist()
+
+        # ---------- 左半邊 ----------
+        # [序號, 券商, 價格, 買進, 賣出]
+        if len(r) >= 5 and pd.notna(r[1]):
+            buy = pd.to_numeric(r[3], errors="coerce")
+            sell = pd.to_numeric(r[4], errors="coerce")
+
+            rows.append({
+                "券商": str(r[1]).strip(),
+                "買進": 0 if pd.isna(buy) else buy,
+                "賣出": 0 if pd.isna(sell) else sell,
+            })
+
+        # ---------- 右半邊 ----------
+        # [序號, 券商, 價格, 買進, 賣出]
+        if len(r) >= 11 and pd.notna(r[7]):
+            buy = pd.to_numeric(r[9], errors="coerce")
+            sell = pd.to_numeric(r[10], errors="coerce")
+
+            rows.append({
+                "券商": str(r[7]).strip(),
+                "買進": 0 if pd.isna(buy) else buy,
+                "賣出": 0 if pd.isna(sell) else sell,
+            })
+
+    df = pd.DataFrame(rows)
+
+    if df.empty:
+        return pd.DataFrame()
+
+    df["買賣超"] = df["買進"] - df["賣出"]
+
+    return df
 
 
 # =========================
