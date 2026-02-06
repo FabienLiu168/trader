@@ -113,55 +113,53 @@ def calc_top5_buy_sell(df):
 
 
 
+
 def parse_branch_csv(file):
     try:
-        raw = pd.read_csv(
-            file,
-            encoding="big5",
-            header=None,
-            engine="python",
-            sep=r"\s+",
-        )
+        # 直接當「純文字」讀，不用 pandas
+        text = file.read().decode("big5", errors="ignore")
     except Exception as e:
         st.error(f"讀檔失敗：{e}")
         return pd.DataFrame()
 
-    # 至少要有標題 + 資料
-    if raw.shape[0] < 3:
-        return pd.DataFrame()
+    lines = text.splitlines()
 
     rows = []
 
-    # 從第 3 行開始（跳過標題）
-    for _, r in raw.iloc[2:].iterrows():
-        r = r.tolist()
+    for line in lines:
+        line = line.strip()
 
-        # 左半邊券商
-        # [序號, 券商, 價格, 買進, 賣出]
-        if len(r) >= 5 and str(r[1]).strip().isdigit() is False:
-            rows.append({
-                "券商": str(r[1]).strip(),
-                "買進": pd.to_numeric(r[3], errors="coerce"),
-                "賣出": pd.to_numeric(r[4], errors="coerce"),
-            })
+        # 跳過標題與空行
+        if not line or "券商" in line or "股票代碼" in line:
+            continue
 
-        # 右半邊券商
-        # 通常在 index 5~9
-        if len(r) >= 10:
+        # 嘗試用「空白切」但不依賴欄位數
+        parts = line.split()
+
+        # 我們只接受「至少有：券商 + 買進 + 賣出」
+        # 格式通常是：
+        # 序號 券商 價格 買進 賣出
+        if len(parts) < 5:
+            continue
+
+        try:
+            broker = parts[1]
+            buy = int(parts[3])
+            sell = int(parts[4])
+
             rows.append({
-                "券商": str(r[6]).strip(),
-                "買進": pd.to_numeric(r[8], errors="coerce"),
-                "賣出": pd.to_numeric(r[9], errors="coerce"),
+                "券商": broker,
+                "買進": buy,
+                "賣出": sell,
+                "買賣超": buy - sell,
             })
+        except Exception:
+            continue
 
     df = pd.DataFrame(rows)
 
     if df.empty:
         return pd.DataFrame()
-
-    df["買進"] = df["買進"].fillna(0)
-    df["賣出"] = df["賣出"].fillna(0)
-    df["買賣超"] = df["買進"] - df["賣出"]
 
     return df
 
