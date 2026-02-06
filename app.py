@@ -359,7 +359,18 @@ def render_stock_table_html(df: pd.DataFrame):
         html += "</tr>"
 
     html += "</tbody></table>"
-    st.markdown(html, unsafe_allow_html=True)
+    # st.markdown(html, unsafe_allow_html=True)
+    st.markdown(
+        """
+        <style>
+        .bull{color:#FF3B30}
+        .bear{color:#34C759}
+        .neut{color:#000000}
+        table {font-size:16px;}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def fetch_twse_broker_trade(stock_id: str, trade_date: dt.date) -> pd.DataFrame:
