@@ -87,33 +87,28 @@ def fetch_top20_by_amount_twse_csv(trade_date):
 
 def parse_branch_csv(file):
     try:
-        # TWSE 分點檔固定是 Big5
         raw = pd.read_csv(file, encoding="big5", header=None)
     except Exception:
         return pd.DataFrame()
 
-    # 至少要有資料列
-    if raw.shape[0] < 3:
-        return pd.DataFrame()
-
     rows = []
 
-    # 從第 3 行開始才是真正資料
+    # 從第 3 列開始才是券商資料（前面是標題）
     for _, r in raw.iloc[2:].iterrows():
-        r = r.tolist()
+        r = [str(x).strip() if pd.notna(x) else "" for x in r.tolist()]
 
-        # 左半邊券商
-        if len(r) >= 5 and pd.notna(r[1]):
+        # ===== 左半邊券商 =====
+        if len(r) >= 5 and r[1] and r[3].isdigit():
             rows.append({
-                "券商": str(r[1]).strip(),
+                "券商": r[1],
                 "買進": pd.to_numeric(r[3], errors="coerce"),
                 "賣出": pd.to_numeric(r[4], errors="coerce"),
             })
 
-        # 右半邊券商
-        if len(r) >= 11 and pd.notna(r[7]):
+        # ===== 右半邊券商 =====
+        if len(r) >= 11 and r[7] and r[9].isdigit():
             rows.append({
-                "券商": str(r[7]).strip(),
+                "券商": r[7],
                 "買進": pd.to_numeric(r[9], errors="coerce"),
                 "賣出": pd.to_numeric(r[10], errors="coerce"),
             })
@@ -123,11 +118,12 @@ def parse_branch_csv(file):
     if df.empty:
         return pd.DataFrame()
 
-    df["買進"] = df["買進"].fillna(0)
-    df["賣出"] = df["賣出"].fillna(0)
+    df["買進"] = df["買進"].fillna(0).astype(int)
+    df["賣出"] = df["賣出"].fillna(0).astype(int)
     df["買賣超"] = df["買進"] - df["賣出"]
 
     return df
+
 
 
 def calc_top5_buy_sell(df):
