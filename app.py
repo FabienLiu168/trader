@@ -549,7 +549,7 @@ def calc_top5_buy_sell(df):
 
 def render_tab_stock_futures(trade_date):
     if "completed_stocks" not in st.session_state:
-    st.session_state.completed_stocks = set()
+        st.session_state.completed_stocks = set()
 
     st.subheader("📊 前20大個股盤後籌碼")
 
