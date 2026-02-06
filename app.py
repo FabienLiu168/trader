@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 import io
 import urllib3
+import re
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -126,37 +127,38 @@ def parse_branch_csv(file):
         line = line.strip()
         if not line:
             continue
-        if "券商" in line or "股票代碼" in line:
+        if "券商買賣股票成交價量資訊" in line:
+            continue
+        if line.startswith("股票代碼") or line.startswith("序號"):
             continue
 
-        # 用「從右往左」抓數字
-        tokens = line.split()
+        # 抓出所有數字（價格、買進、賣出）
+        nums = [int(x) for x in re.findall(r"\d+", line)]
 
-        # 至少要有：序號 券商 價格 買進 賣出
-        # 但券商可能佔多個 token
-        nums = []
-        strs = []
+        # 抓出中文 + 數字的券商名稱
+        brokers = re.findall(r"\d{4}.+?(?=\s+\d{4})", line)
 
-        for t in tokens:
-            if t.replace(",", "").isdigit():
-                nums.append(int(t.replace(",", "")))
-            else:
-                strs.append(t)
-
-        # 左邊一組
-        if len(nums) >= 3 and len(strs) >= 1:
+        # 一行通常有 2 筆
+        if len(nums) >= 6 and len(brokers) >= 2:
+            # 左邊
             rows.append({
-                "券商": "".join(strs[:-2]) if len(strs) > 2 else strs[0],
-                "買進": nums[-2],
-                "賣出": nums[-1],
+                "券商": brokers[0].strip(),
+                "買進": nums[1],
+                "賣出": nums[2],
+            })
+            # 右邊
+            rows.append({
+                "券商": brokers[1].strip(),
+                "買進": nums[4],
+                "賣出": nums[5],
             })
 
-        # 右邊一組（如果有兩組數字）
-        if len(nums) >= 6 and len(strs) >= 2:
+        # 只有一筆的行（尾端）
+        elif len(nums) >= 3 and len(brokers) == 1:
             rows.append({
-                "券商": strs[-1],
-                "買進": nums[-4],
-                "賣出": nums[-3],
+                "券商": brokers[0].strip(),
+                "買進": nums[1],
+                "賣出": nums[2],
             })
 
     df = pd.DataFrame(rows)
