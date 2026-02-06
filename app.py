@@ -111,56 +111,41 @@ def calc_top5_buy_sell(df):
         "賣超": int(abs(top_sell)),
     }
 
+
 def parse_branch_csv(file):
-    """
-    專門解析 TWSE 券商分點 CSV（如 2330.csv）
-    支援：
-    - Big5 編碼
-    - 前置說明列
-    - 左右雙欄券商格式
-    """
     try:
-        raw = pd.read_csv(
-            file,
-            encoding="big5",
-            header=None,
-            engine="python"
-        )
-    except Exception:
+        # TWSE 分點 CSV 一定是 Big5、而且沒有 header
+        raw = pd.read_csv(file, encoding="big5", header=None)
+    except Exception as e:
+        st.error(f"讀檔失敗：{e}")
         return pd.DataFrame()
 
-    # 至少要有資料
-    if raw.shape[0] < 5:
+    # 至少要有標題 + 資料
+    if raw.shape[0] < 3:
         return pd.DataFrame()
 
     rows = []
 
-    # 從第 2 行之後才是資料（前兩行是標題說明）
+    # 從第 3 列開始才是真正資料
     for _, r in raw.iloc[2:].iterrows():
         r = r.tolist()
 
-        # ---------- 左半邊 ----------
+        # === 左半邊券商 ===
         # [序號, 券商, 價格, 買進, 賣出]
         if len(r) >= 5 and pd.notna(r[1]):
-            buy = pd.to_numeric(r[3], errors="coerce")
-            sell = pd.to_numeric(r[4], errors="coerce")
-
             rows.append({
                 "券商": str(r[1]).strip(),
-                "買進": 0 if pd.isna(buy) else buy,
-                "賣出": 0 if pd.isna(sell) else sell,
+                "買進": pd.to_numeric(r[3], errors="coerce"),
+                "賣出": pd.to_numeric(r[4], errors="coerce"),
             })
 
-        # ---------- 右半邊 ----------
-        # [序號, 券商, 價格, 買進, 賣出]
+        # === 右半邊券商 ===
+        # [序號, 券商, 價格, 買進, 賣出] 在 index 6~10
         if len(r) >= 11 and pd.notna(r[7]):
-            buy = pd.to_numeric(r[9], errors="coerce")
-            sell = pd.to_numeric(r[10], errors="coerce")
-
             rows.append({
                 "券商": str(r[7]).strip(),
-                "買進": 0 if pd.isna(buy) else buy,
-                "賣出": 0 if pd.isna(sell) else sell,
+                "買進": pd.to_numeric(r[9], errors="coerce"),
+                "賣出": pd.to_numeric(r[10], errors="coerce"),
             })
 
     df = pd.DataFrame(rows)
@@ -168,6 +153,8 @@ def parse_branch_csv(file):
     if df.empty:
         return pd.DataFrame()
 
+    df["買進"] = df["買進"].fillna(0)
+    df["賣出"] = df["賣出"].fillna(0)
     df["買賣超"] = df["買進"] - df["賣出"]
 
     return df
