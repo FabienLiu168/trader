@@ -384,6 +384,21 @@ def render_stock_table_html(df: pd.DataFrame):
     html += "</tbody></table>"
     st.markdown(html, unsafe_allow_html=True)
 
+# =========================
+# TWSE 券商分點查詢輔助（方案 B）
+# =========================
+def twse_bsr_hint_link(stock_id: str, trade_date: dt.date) -> str:
+    """
+    產生 TWSE 券商分點查詢提示連結（不送參數，只做提示）
+    """
+    return (
+        "<a href='https://bsr.twse.com.tw/bshtm/bsMenu.aspx' "
+        "target='_blank' "
+        f"title='股票代碼：{stock_id}｜查詢日：{trade_date.strftime('%Y-%m-%d')}'>"
+        "🔍</a>"
+    )
+
+
 def fetch_twse_broker_trade(stock_id: str, trade_date: dt.date) -> pd.DataFrame:
     """
     從 TWSE 官方 bsr 系統抓取【單一股票】當日券商買賣明細
@@ -533,8 +548,22 @@ def calc_top5_buy_sell(df):
     return result
 
 def render_tab_stock_futures(trade_date):
-    st.subheader("📊 前20大個股盤後籌碼")
+    # =========================
+    # 方案 C：當日券商分點「批次查詢清單」
+    # =========================
+    st.markdown("### 📥 券商分點查詢輔助")
 
+    query_list = df[["股票代碼", "股票名稱"]].copy()
+    query_list["查詢日"] = trade_date.strftime("%Y-%m-%d")
+
+    st.download_button(
+        "📥 下載『今日券商分點查詢清單（CSV）』",
+        data=query_list.to_csv(index=False, encoding="utf-8-sig"),
+        file_name=f"twse_bsr_query_list_{trade_date.strftime('%Y%m%d')}.csv",
+        mime="text/csv"
+    )
+
+    st.subheader("📊 前20大個股盤後籌碼")
     df = fetch_top20_by_amount_twse_csv(trade_date)
     use_twse = st.checkbox("📡 使用 TWSE 官方券商買賣資料（較慢）", value=False)
     stock_ids = df["股票代碼"].astype(str).tolist()
@@ -568,8 +597,9 @@ def render_tab_stock_futures(trade_date):
     df["買超"] = df["股票代碼"].apply(lambda s: f"{summary.get(s,{}).get('買超',''):,}" if s in summary else "")
     df["賣超"] = df["股票代碼"].apply(lambda s: f"{summary.get(s,{}).get('賣超',''):,}" if s in summary else "")
     df["券商分點"] = df["股票代碼"].apply(
-        lambda s: f"<a href='https://histock.tw/stock/branch.aspx?no={s}' target='_blank'>🔗</a>"
+        lambda s: twse_bsr_hint_link(s, trade_date)
     )
+
 
     render_stock_table_html(
         df[["股票代碼","股票名稱","收盤","成交量","成交金額","買超","賣超","券商分點"]]
