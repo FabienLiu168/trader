@@ -85,30 +85,40 @@ def fetch_top20_by_amount_twse_csv(trade_date):
 
     return df.sort_values("成交金額", ascending=False).head(20)
 
-
-def parse_branch_csv(file):
+def parse_branch_csv(file, stock_id: str):
+    """
+    解析 TWSE 券商分點 CSV（單一股票）
+    """
+    # 1️⃣ 嘗試多種編碼（TWSE 常是 Big5）
     try:
-        df = pd.read_csv(file)
+        df = pd.read_csv(file, encoding="utf-8")
     except Exception:
-        return pd.DataFrame()
+        try:
+            df = pd.read_csv(file, encoding="big5")
+        except Exception:
+            return pd.DataFrame()
 
+    # 2️⃣ 欄位正規化（依 TWSE 真實欄位）
     col_map = {}
     for c in df.columns:
-        if "代號" in c:
-            col_map[c] = "股票代碼"
-        elif "買" in c:
+        if "買進" in c:
             col_map[c] = "買進"
-        elif "賣" in c:
+        elif "賣出" in c:
             col_map[c] = "賣出"
 
     df = df.rename(columns=col_map)
 
-    if not {"股票代碼", "買進", "賣出"}.issubset(df.columns):
+    if not {"買進", "賣出"}.issubset(df.columns):
         return pd.DataFrame()
 
-    df["股票代碼"] = df["股票代碼"].astype(str)
-    df["買進"] = pd.to_numeric(df["買進"], errors="coerce").fillna(0)
-    df["賣出"] = pd.to_numeric(df["賣出"], errors="coerce").fillna(0)
+    # 3️⃣ 數值清洗
+    df["買進"] = pd.to_numeric(df["買進"].astype(str).str.replace(",", ""), errors="coerce").fillna(0)
+    df["賣出"] = pd.to_numeric(df["賣出"].astype(str).str.replace(",", ""), errors="coerce").fillna(0)
+
+    # 4️⃣ 補上股票代碼（關鍵！）
+    df["股票代碼"] = str(stock_id)
+
+    # 5️⃣ 買賣超
     df["買賣超"] = df["買進"] - df["賣出"]
 
     return df
@@ -191,7 +201,7 @@ def render_tab_stock_futures(trade_date):
         )
 
         if uploaded:
-            df_branch = parse_branch_csv(uploaded)
+            df_branch = parse_branch_csv(uploaded, sid)
             if df_branch.empty:
                 st.error(f"❌ {sid} CSV 無法解析")
             else:
