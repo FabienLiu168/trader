@@ -387,6 +387,18 @@ def render_stock_table_html(df: pd.DataFrame):
 # =========================
 # TWSE 券商分點查詢輔助（方案 B）
 # =========================
+def broker_action_link(stock_id: str) -> str:
+    """
+    表格右側 🔍：選中某一檔股票（不做上傳）
+    """
+    return f"""
+    <a href='?active_stock={stock_id}'
+       title='上傳 {stock_id} 券商分點'>
+        🔍
+    </a>
+    """
+
+
 def twse_bsr_hint_link(stock_id: str, trade_date: dt.date) -> str:
     """
     產生 TWSE 券商分點查詢提示連結（不送參數，只做提示）
@@ -548,8 +560,19 @@ def calc_top5_buy_sell(df):
     return result
 
 def render_tab_stock_futures(trade_date):
+    # ===== 第二步：接住使用者點的 🔍 =====
+    params = st.query_params
+    if "active_stock" in params:
+        st.session_state.active_stock = params["active_stock"]
+    # ===== 初始化狀態 =====
+    if "active_stock" not in st.session_state:
+        st.session_state.active_stock = None
+    
     if "completed_stocks" not in st.session_state:
         st.session_state.completed_stocks = set()
+    
+    if "branch_result" not in st.session_state:
+        st.session_state.branch_result = {}
 
     st.subheader("📊 前20大個股盤後籌碼")
 
@@ -576,6 +599,33 @@ def render_tab_stock_futures(trade_date):
         file_name=f"twse_bsr_query_list_{trade_date.strftime('%Y%m%d')}.csv",
         mime="text/csv"
     )
+
+    # ===== 第三步：單一股票上傳區 =====
+active = st.session_state.get("active_stock")
+
+if active and active not in st.session_state.completed_stocks:
+    st.markdown(f"### 📤 上傳【{active}】券商分點 CSV")
+
+    uploaded = st.file_uploader(
+        f"請上傳 {active} 的券商分點 CSV",
+        type=["csv"],
+        key=f"upload_{active}"
+    )
+
+    if uploaded:
+        df_branch = parse_branch_csv(uploaded)
+
+        if df_branch.empty:
+            st.error("❌ CSV 無法解析，請確認格式")
+        else:
+            result = calc_top5_buy_sell(df_branch)
+
+            # ✔ 寫入該股票結果
+            st.session_state.branch_result[active] = result
+            st.session_state.completed_stocks.add(active)
+
+            st.success(f"✅ {active} 券商分點已完成")
+
 
     # ③ UI 控制（此時 df 已安全）
     use_twse = st.checkbox("📡 使用 TWSE 官方券商買賣資料（較慢）", value=False)
