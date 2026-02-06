@@ -384,33 +384,6 @@ def render_stock_table_html(df: pd.DataFrame):
     html += "</tbody></table>"
     st.markdown(html, unsafe_allow_html=True)
 
-# =========================
-# TWSE 券商分點查詢輔助（方案 B）
-# =========================
-def broker_action_link(stock_id: str) -> str:
-    """
-    表格右側 🔍：選中某一檔股票（不做上傳）
-    """
-    return f"""
-    <a href='?active_stock={stock_id}'
-       title='上傳 {stock_id} 券商分點'>
-        🔍
-    </a>
-    """
-
-
-def twse_bsr_hint_link(stock_id: str, trade_date: dt.date) -> str:
-    """
-    產生 TWSE 券商分點查詢提示連結（不送參數，只做提示）
-    """
-    return (
-        "<a href='https://bsr.twse.com.tw/bshtm/bsMenu.aspx' "
-        "target='_blank' "
-        f"title='股票代碼：{stock_id}｜查詢日：{trade_date.strftime('%Y-%m-%d')}'>"
-        "🔍</a>"
-    )
-
-
 def fetch_twse_broker_trade(stock_id: str, trade_date: dt.date) -> pd.DataFrame:
     """
     從 TWSE 官方 bsr 系統抓取【單一股票】當日券商買賣明細
@@ -560,81 +533,21 @@ def calc_top5_buy_sell(df):
     return result
 
 def render_tab_stock_futures(trade_date):
-    # ===== 第二步：接住使用者點的 🔍 =====
-    params = st.query_params
-    if "active_stock" in params:
-        st.session_state.active_stock = params["active_stock"]
-    # ===== 初始化狀態 =====
-    if "active_stock" not in st.session_state:
-        st.session_state.active_stock = None
-    
-    if "completed_stocks" not in st.session_state:
-        st.session_state.completed_stocks = set()
-    
-    if "branch_result" not in st.session_state:
-        st.session_state.branch_result = {}
-
     st.subheader("📊 前20大個股盤後籌碼")
 
-    # ① 先抓資料
     df = fetch_top20_by_amount_twse_csv(trade_date)
-
-    # ② 🔐 防呆：確保 df 具備必要欄位
-    required_cols = {"股票代碼", "股票名稱"}
-    if df.empty or not required_cols.issubset(df.columns):
-        st.warning("⚠️ 查無當日前 20 大成交資料")
-        return
-
-    # =========================
-    # 方案 C：當日券商分點「批次查詢清單」
-    # =========================
-    st.markdown("### 📥 券商分點查詢輔助")
-
-    query_list = df[["股票代碼", "股票名稱"]].copy()
-    query_list["查詢日"] = trade_date.strftime("%Y-%m-%d")
-
-    st.download_button(
-        "📥 下載『今日券商分點查詢清單（CSV）』",
-        data=query_list.to_csv(index=False, encoding="utf-8-sig"),
-        file_name=f"twse_bsr_query_list_{trade_date.strftime('%Y%m%d')}.csv",
-        mime="text/csv"
-    )
-
-    # ===== 第三步：單一股票上傳區 =====
-active = st.session_state.get("active_stock")
-
-if active and active not in st.session_state.completed_stocks:
-    st.markdown(f"### 📤 上傳【{active}】券商分點 CSV")
-
-    uploaded = st.file_uploader(
-        f"請上傳 {active} 的券商分點 CSV",
-        type=["csv"],
-        key=f"upload_{active}"
-    )
-
-    if uploaded:
-        df_branch = parse_branch_csv(uploaded)
-
-        if df_branch.empty:
-            st.error("❌ CSV 無法解析，請確認格式")
-        else:
-            result = calc_top5_buy_sell(df_branch)
-
-            # ✔ 寫入該股票結果
-            st.session_state.branch_result[active] = result
-            st.session_state.completed_stocks.add(active)
-
-            st.success(f"✅ {active} 券商分點已完成")
-
-
-    # ③ UI 控制（此時 df 已安全）
     use_twse = st.checkbox("📡 使用 TWSE 官方券商買賣資料（較慢）", value=False)
     stock_ids = df["股票代碼"].astype(str).tolist()
 
+    if df.empty:
+        st.warning("無資料")
+        return
+        
     summary = {}
     if use_twse:
         with st.spinner("📡 讀取 TWSE 官方券商資料中，請稍候..."):
             summary = fetch_twse_broker_summary(stock_ids, trade_date)
+    
     else:
         uploaded = st.file_uploader(
             "📤 上傳券商分點 CSV（用於買賣超分析）",
@@ -646,13 +559,7 @@ if active and active not in st.session_state.completed_stocks:
                 st.error("❌ CSV 無法解析")
             else:
                 summary = calc_top5_buy_sell(df_branch)
-                
-                # ✅ 標記完成股票（關鍵）
-                completed_ids = set(df_branch["股票代碼"].astype(str).unique())
-                st.session_state.completed_stocks.update(completed_ids)
-                
                 st.success("✅ 已完成券商分點分析")
-
 
 
     df["收盤"] = df.apply(lambda r: format_close_with_prev(r, trade_date), axis=1)
@@ -660,13 +567,9 @@ if active and active not in st.session_state.completed_stocks:
     df["成交金額"] = df["成交金額"].apply(lambda x: f"{x/1_000_000:,.0f} M")
     df["買超"] = df["股票代碼"].apply(lambda s: f"{summary.get(s,{}).get('買超',''):,}" if s in summary else "")
     df["賣超"] = df["股票代碼"].apply(lambda s: f"{summary.get(s,{}).get('賣超',''):,}" if s in summary else "")
-    def broker_action_cell(stock_id):
-        if stock_id in st.session_state.completed_stocks:
-            return "<span style='color:#34C759;font-weight:600'>✅ 已完成</span>"
-        else:
-            return twse_bsr_hint_link(stock_id, trade_date)
-    
-    df["券商分點"] = df["股票代碼"].apply(broker_action_cell)
+    df["券商分點"] = df["股票代碼"].apply(
+        lambda s: f"<a href='https://histock.tw/stock/branch.aspx?no={s}' target='_blank'>🔗</a>"
+    )
 
     render_stock_table_html(
         df[["股票代碼","股票名稱","收盤","成交量","成交金額","買超","賣超","券商分點"]]
