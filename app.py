@@ -250,7 +250,7 @@ def render_tab_stock_futures(trade_date):
             else:
                 result = calc_top5_buy_sell(df_branch)
                 st.session_state.broker_done[sid] = result
-                st.success(f"✅ {sid} 買賣超已完成")
+                #st.success(f"✅ {sid} 買賣超已完成")
                 st.experimental_rerun()
 
 
