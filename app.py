@@ -87,75 +87,84 @@ def fetch_top20_by_amount_twse_csv(trade_date):
 
 
 
-
 def calc_top5_buy_sell(df):
     if df.empty or "買賣超" not in df.columns:
         return {}
 
-    top_buy = (
+    buy = (
         df[df["買賣超"] > 0]
-        .sort_values("買賣超", ascending=False)
-        .head(5)["買賣超"]
+        .groupby("券商")["買賣超"]
+        .sum()
+        .sort_values(ascending=False)
+        .head(5)
         .sum()
     )
 
-    top_sell = (
+    sell = (
         df[df["買賣超"] < 0]
-        .sort_values("買賣超")
-        .head(5)["買賣超"]
+        .groupby("券商")["買賣超"]
+        .sum()
+        .sort_values()
+        .head(5)
         .sum()
     )
 
     return {
-        "買超": int(top_buy),
-        "賣超": int(abs(top_sell)),
+        "買超": int(buy),
+        "賣超": int(abs(sell)),
     }
-
 
 
 
 def parse_branch_csv(file):
     try:
-        # TWSE 分點 CSV：Big5、左右雙表、header 在第 3 行
-        df = pd.read_csv(
-            file,
-            encoding="big5",
-            engine="python",
-            header=2
-        )
-    except Exception as e:
-        st.error(f"讀檔失敗：{e}")
+        # 直接當文字讀（不要用 CSV）
+        text = file.read().decode("big5", errors="ignore")
+    except Exception:
         return pd.DataFrame()
+
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
 
     rows = []
 
-    for _, r in df.iterrows():
-        # 左半邊
-        if pd.notna(r.get("券商")):
-            rows.append({
-                "券商": str(r["券商"]).strip(),
-                "買進": pd.to_numeric(r["買進股數"], errors="coerce"),
-                "賣出": pd.to_numeric(r["賣出股數"], errors="coerce"),
-            })
+    for line in lines:
+        # 跳過標題列
+        if "券商" in line or "股票代碼" in line:
+            continue
 
-        # 右半邊
-        if pd.notna(r.get("券商.1")):
-            rows.append({
-                "券商": str(r["券商.1"]).strip(),
-                "買進": pd.to_numeric(r["買進股數.1"], errors="coerce"),
-                "賣出": pd.to_numeric(r["賣出股數.1"], errors="coerce"),
-            })
+        # 用空白切（至少會有 10~12 欄）
+        parts = line.split()
 
-    out = pd.DataFrame(rows)
+        # 左邊一組
+        if len(parts) >= 5:
+            try:
+                rows.append({
+                    "券商": parts[1],
+                    "買進": int(parts[3]),
+                    "賣出": int(parts[4]),
+                })
+            except Exception:
+                pass
 
-    if out.empty:
+        # 右邊一組（如果存在）
+        if len(parts) >= 10:
+            try:
+                rows.append({
+                    "券商": parts[6],
+                    "買進": int(parts[8]),
+                    "賣出": int(parts[9]),
+                })
+            except Exception:
+                pass
+
+    df = pd.DataFrame(rows)
+
+    if df.empty:
         return pd.DataFrame()
 
-    out["買進"] = out["買進"].fillna(0)
-    out["賣出"] = out["賣出"].fillna(0)
-    out["買賣超"] = out["買進"] - out["賣出"]
+    df["買賣超"] = df["買進"] - df["賣出"]
+    return df
 
-    return out
 
 
 
