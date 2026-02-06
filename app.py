@@ -115,7 +115,14 @@ def calc_top5_buy_sell(df):
 def parse_branch_csv(file):
     try:
         # TWSE 分點 CSV 一定是 Big5、而且沒有 header
-        raw = pd.read_csv(file, encoding="big5", header=None)
+        raw = pd.read_csv(
+            file,
+            encoding="big5",
+            header=None,
+            engine="python",
+            sep=r"\s+",
+        )
+
     except Exception as e:
         st.error(f"讀檔失敗：{e}")
         return pd.DataFrame()
