@@ -116,41 +116,46 @@ def calc_top5_buy_sell(df):
     }
 
 
+
 def parse_branch_csv(file):
     try:
-        text = file.getvalue().decode("big5", errors="ignore")
-    except Exception:
+        df = pd.read_csv(
+            file,
+            encoding="big5",
+            skiprows=2,      # 跳過「券商買賣股票成交價量資訊」「股票代碼」
+        )
+    except Exception as e:
+        st.error(f"讀檔失敗：{e}")
         return pd.DataFrame()
 
     rows = []
 
-    # 正則：序號 券商 價格 買進 賣出（左右各一組）
-    pattern = re.compile(
-        r"""
-        (\d+)\s+                # 序號
-        ([^\d\s]+)\s+           # 券商
-        (\d+)\s+                # 價格
-        (\d+)\s+                # 買進
-        (\d+)                   # 賣出
-        """,
-        re.VERBOSE
-    )
+    # 左半部
+    left_cols = ["序號", "券商", "價格", "買進股數", "賣出股數"]
+    if all(c in df.columns for c in left_cols):
+        left = df[left_cols].copy()
+        left.columns = ["序號", "券商", "價格", "買進", "賣出"]
+        rows.append(left)
 
-    for line in text.splitlines():
-        for m in pattern.finditer(line):
-            rows.append({
-                "券商": m.group(2),
-                "買進": int(m.group(4)),
-                "賣出": int(m.group(5)),
-            })
+    # 右半部（中間有一個空欄，pandas 會自動命名成 Unnamed）
+    right_cols = [c for c in df.columns if "Unnamed" in c]
+    if len(right_cols) >= 5:
+        right = df[right_cols[:5]].copy()
+        right.columns = ["序號", "券商", "價格", "買進", "賣出"]
+        rows.append(right)
 
-    df = pd.DataFrame(rows)
-    if df.empty:
+    if not rows:
         return pd.DataFrame()
 
-    df["買賣超"] = df["買進"] - df["賣出"]
-    return df
+    df_all = pd.concat(rows, ignore_index=True)
 
+    # 清洗
+    df_all = df_all.dropna(subset=["券商"])
+    df_all["買進"] = pd.to_numeric(df_all["買進"], errors="coerce").fillna(0).astype(int)
+    df_all["賣出"] = pd.to_numeric(df_all["賣出"], errors="coerce").fillna(0).astype(int)
+    df_all["買賣超"] = df_all["買進"] - df_all["賣出"]
+
+    return df_all
 
 
 # =========================
