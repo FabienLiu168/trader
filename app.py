@@ -25,10 +25,33 @@ st.markdown(
     .bear{color:#34C759}
     .neut{color:#000000}
     table {font-size:16px;}
+
+    /* =======================
+       查詢日期（date_input）
+       ======================= */
+    label {
+        font-size: 20px !important;
+        font-weight: 600;
+    }
+
+    div[data-baseweb="input"] input {
+        font-size: 20px !important;
+        font-weight: 600;
+    }
+
+    /* =======================
+       Tab 模組名稱
+       ======================= */
+    button[data-baseweb="tab"] {
+        font-size: 18px !important;
+        font-weight: 600;
+        padding: 10px 16px;
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
+
 
 st.markdown(
     f"<div style='font-size:2.5rem;font-weight:700;text-align:center;color:#2d82b5;'>{APP_TITLE}</div>",
@@ -359,19 +382,7 @@ def render_stock_table_html(df: pd.DataFrame):
         html += "</tr>"
 
     html += "</tbody></table>"
-    # st.markdown(html, unsafe_allow_html=True)
-    st.markdown(
-        """
-        <style>
-        .bull{color:#FF3B30}
-        .bear{color:#34C759}
-        .neut{color:#000000}
-        table {font-size:16px;}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
+    st.markdown(html, unsafe_allow_html=True)
 
 def fetch_twse_broker_trade(stock_id: str, trade_date: dt.date) -> pd.DataFrame:
     """
