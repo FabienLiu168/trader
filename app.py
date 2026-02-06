@@ -86,44 +86,61 @@ def fetch_top20_by_amount_twse_csv(trade_date):
     return df.sort_values("成交金額", ascending=False).head(20)
 
 def parse_branch_csv(file):
+    """
+    解析 TWSE 券商分點『純文字格式』CSV（例如 2330.csv）
+    """
     try:
-        raw = pd.read_csv(file, encoding="big5", header=None)
+        # 直接當純文字讀
+        text = file.read().decode("big5", errors="ignore")
     except Exception:
         return pd.DataFrame()
 
+    lines = text.splitlines()
+
     rows = []
 
-    # 從第 3 列開始才是券商資料（前面是標題）
-    for _, r in raw.iloc[2:].iterrows():
-        r = [str(x).strip() if pd.notna(x) else "" for x in r.tolist()]
+    for line in lines:
+        # 略過說明列
+        if "券商買賣股票成交價量資訊" in line:
+            continue
+        if line.strip().startswith("股票代碼"):
+            continue
+        if line.strip().startswith("序號"):
+            continue
 
-        # ===== 左半邊券商 =====
-        if len(r) >= 5 and r[1] and r[3].isdigit():
-            rows.append({
-                "券商": r[1],
-                "買進": pd.to_numeric(r[3], errors="coerce"),
-                "賣出": pd.to_numeric(r[4], errors="coerce"),
-            })
+        # 用空白切（同時處理全形空白）
+        parts = line.replace("　", " ").split()
 
-        # ===== 右半邊券商 =====
-        if len(r) >= 11 and r[7] and r[9].isdigit():
-            rows.append({
-                "券商": r[7],
-                "買進": pd.to_numeric(r[9], errors="coerce"),
-                "賣出": pd.to_numeric(r[10], errors="coerce"),
-            })
+        # 至少要有左邊一組
+        if len(parts) >= 5:
+            # 左半部
+            try:
+                rows.append({
+                    "券商": parts[1],
+                    "買進": int(parts[3]),
+                    "賣出": int(parts[4]),
+                })
+            except Exception:
+                pass
 
-    df = pd.DataFrame(rows)
+        # 右半部（有些行會有）
+        if len(parts) >= 11:
+            try:
+                rows.append({
+                    "券商": parts[7],
+                    "買進": int(parts[9]),
+                    "賣出": int(parts[10]),
+                })
+            except Exception:
+                pass
 
-    if df.empty:
+    if not rows:
         return pd.DataFrame()
 
-    df["買進"] = df["買進"].fillna(0).astype(int)
-    df["賣出"] = df["賣出"].fillna(0).astype(int)
+    df = pd.DataFrame(rows)
     df["買賣超"] = df["買進"] - df["賣出"]
 
     return df
-
 
 
 def calc_top5_buy_sell(df):
