@@ -511,7 +511,7 @@ def calc_top5_buy_sell(df):
     return result
 
 def render_tab_stock_futures(trade_date):
-    st.subheader("📊 第二模組：個股期貨＋籌碼")
+    st.subheader("📊 個股盤後籌碼")
 
     df = fetch_top20_by_amount_twse_csv(trade_date)
     use_twse = st.checkbox("📡 使用 TWSE 官方券商買賣資料（較慢）", value=False)
