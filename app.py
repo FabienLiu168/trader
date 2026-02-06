@@ -553,7 +553,7 @@ def calc_top5_buy_sell(df):
     return result
 
 def render_tab_stock_futures(trade_date):
-    def fmt_num(x):
+def fmt_num(x):
     return f"{x:,}" if isinstance(x, (int, float)) else ""
     
     st.subheader("📊 前20大個股盤後籌碼")
