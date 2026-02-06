@@ -248,7 +248,12 @@ def render_tab_stock_futures(trade_date):
     df["成交金額"] = df["成交金額"].apply(lambda x: f"{x/1_000_000:,.0f} M")
     df["買超"] = ""
     df["賣超"] = ""
-    df["券商分點"] = ""
+    df["券商分點"] = df["股票代碼"].apply(
+        lambda s: (
+            "<a href='https://bsr.twse.com.tw/bshtm/bsMenu.aspx' "
+            f"target='_blank' title='股票代碼 {s}'>查詢</a>"
+        )
+    )
 
     st.dataframe(
         df[["股票代碼","股票名稱","收盤","成交量","成交金額","買超","賣超","券商分點"]],
