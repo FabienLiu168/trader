@@ -223,7 +223,7 @@ def render_tab_stock_futures(trade_date):
         )
 
         if uploaded:
-            df_branch = parse_branch_csv(uploaded, sid)
+            df_branch = parse_branch_csv(uploaded)
             if df_branch.empty:
                 st.error(f"❌ {sid} CSV 無法解析")
             else:
