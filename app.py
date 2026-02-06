@@ -329,6 +329,8 @@ def render_tab_option_market(trade_date):
 # HTML 表格 render
 # =========================
 def render_stock_table_html(df: pd.DataFrame):
+    # ✅ 一定要在 function 內定義
+    gray_cols = {"成交量", "成交金額", "買超", "賣超"}
     html = "<table style='width:100%;border-collapse:collapse;'>"
     html += "<thead><tr style='background:#f5f5f5;'>"
     for c in df.columns:
