@@ -572,13 +572,23 @@ def render_tab_stock_futures(trade_date):
     df["收盤"] = df.apply(lambda r: format_close_with_prev(r, trade_date), axis=1)
     df["成交量"] = df["成交量"].apply(lambda x: f"{int(x/1000):,}")
     df["成交金額"] = df["成交金額"].apply(lambda x: f"{x/1_000_000:,.0f} M")
+
     df["買超"] = df["股票代碼"].apply(
-        lambda s: f"{st.session_state.broker_done.get(str(s), {}).get('買超',''):,}"
+        lambda s: (
+            f"{int(st.session_state.broker_done[str(s)]['買超']):,}"
+            if str(s) in st.session_state.broker_done
+            else ""
+        )
     )
     
     df["賣超"] = df["股票代碼"].apply(
-        lambda s: f"{st.session_state.broker_done.get(str(s), {}).get('賣超',''):,}"
+        lambda s: (
+            f"{int(st.session_state.broker_done[str(s)]['賣超']):,}"
+            if str(s) in st.session_state.broker_done
+            else ""
+        )
     )
+
 
     df["券商分點"] = df["股票代碼"].apply(
         lambda s: f"<a href='https://histock.tw/stock/branch.aspx?no={s}' target='_blank'>🔗</a>"
