@@ -564,9 +564,18 @@ def render_tab_stock_futures(trade_date):
     )
 
     st.subheader("📊 前20大個股盤後籌碼")
+    
     df = fetch_top20_by_amount_twse_csv(trade_date)
+    
+    # 🔐 防呆：確保 df 具備必要欄位
+    required_cols = {"股票代碼", "股票名稱"}
+    if df.empty or not required_cols.issubset(df.columns):
+        st.warning("⚠️ 查無當日前 20 大成交資料")
+        return
+    
     use_twse = st.checkbox("📡 使用 TWSE 官方券商買賣資料（較慢）", value=False)
     stock_ids = df["股票代碼"].astype(str).tolist()
+
 
     if df.empty:
         st.warning("無資料")
