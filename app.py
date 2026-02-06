@@ -29,8 +29,6 @@ st.markdown(
     /* =======================
        查詢日期（date_input）
        ======================= */
-    st.info(f"📅 查詢交易日：{trade_date.strftime('%Y-%m-%d')}")
-      
     label {
         font-size: 20px !important;
         font-weight: 600;
@@ -353,10 +351,42 @@ def render_tab_option_market(trade_date):
 # =========================
 # HTML 表格 render
 # =========================
+def render_stock_table_html(df: pd.DataFrame):
+    gray_cols = {"成交量", "成交金額", "買超", "賣超"}
+
+    html = "<table style='width:100%;border-collapse:collapse;'>"
+    html += "<thead><tr>"
+
+    for c in df.columns:
+        # 👉 深灰底 + 白字
+        bg = "#3a3a3a" if c in gray_cols else "#2b2b2b"
+        color = "#ffffff"
+
+        html += (
+            f"<th style='padding:8px;border:1px solid #555;"
+            f"background:{bg};color:{color};"
+            f"text-align:center;font-weight:600'>"
+            f"{c}</th>"
+        )
+
+    html += "</tr></thead><tbody>"
+
+    for _, row in df.iterrows():
+        html += "<tr>"
+        for v in row:
+            html += (
+                "<td style='padding:8px;border:1px solid #444;"
+                "text-align:center'>"
+                f"{v}</td>"
+            )
+        html += "</tr>"
+
+    html += "</tbody></table>"
+    st.markdown(html, unsafe_allow_html=True)
+
 def fetch_twse_broker_trade(stock_id: str, trade_date: dt.date) -> pd.DataFrame:
     """
     從 TWSE 官方 bsr 系統抓取【單一股票】當日券商買賣明細
-    若查無資料（非交易日 / 未來日），回傳空 DataFrame
     """
     roc_year = trade_date.year - 1911
     date_str = f"{roc_year}/{trade_date.month:02d}/{trade_date.day:02d}"
@@ -364,40 +394,25 @@ def fetch_twse_broker_trade(stock_id: str, trade_date: dt.date) -> pd.DataFrame:
     session = requests.Session()
     url = "https://bsr.twse.com.tw/bshtm/bsMenu.aspx"
 
-    r = session.get(url, timeout=10, verify=False)
+    # 先 GET 拿頁面（建立 session）
+    r = session.get(url, timeout=10)
     r.raise_for_status()
 
+    # POST 查詢
     payload = {
         "TextBox_Stkno": stock_id,
         "TextBox_Date": date_str,
         "Button_Query": "查詢",
     }
 
-    r2 = session.post(url, data=payload, timeout=10, verify=False)
+    r2 = session.post(url, data=payload, timeout=10)
     r2.raise_for_status()
 
-    # 解析所有 table
-    try:
-        dfs = pd.read_html(r2.text)
-    except ValueError:
-        return pd.DataFrame()
+    # 解析 HTML table
+    dfs = pd.read_html(r2.text)
+    df = dfs[-1]  # 真正的券商表通常在最後
 
-    if not dfs:
-        return pd.DataFrame()
-
-    # 🔑 找「真正的券商分點表」
-    target_df = None
-    for t in dfs:
-        cols = set(t.columns.astype(str))
-        if {"證券商", "買進股數", "賣出股數"}.issubset(cols):
-            target_df = t
-            break
-
-    # 查無券商分點資料
-    if target_df is None:
-        return pd.DataFrame()
-
-    df = target_df.rename(columns={
+    df = df.rename(columns={
         "證券商": "券商",
         "買進股數": "買進",
         "賣出股數": "賣出",
@@ -414,9 +429,6 @@ def fetch_twse_broker_trade(stock_id: str, trade_date: dt.date) -> pd.DataFrame:
     df["買賣超"] = df["買進"] - df["賣出"]
 
     return df
-
-
-    
 def calc_top5_from_twse(df_broker: pd.DataFrame) -> dict:
     buy = (
         df_broker[df_broker["買賣超"] > 0]
@@ -569,37 +581,12 @@ def render_tab_stock_futures(trade_date):
 default_trade_date = get_latest_trading_date()
 trade_date = st.date_input("📅 查詢交易日", value=default_trade_date)
 
-st.info(f"📅 目前選定查詢交易日：{trade_date.strftime('%Y-%m-%d')}")
-
 if not is_trading_day(trade_date):
     st.warning("非交易日")
     st.stop()
 
-# ===== Step 1：下載來源確認（一定要放在 trade_date 之後）=====
-st.markdown("### 🔎 券商分點下載來源確認（Step 1）")
-
-if st.button("① 下載並確認『當日』券商分點資料（樣本：2330）"):
-    with st.spinner("正在下載 TWSE 券商分點資料..."):
-        df_check = fetch_twse_broker_trade("2330", trade_date)
-
-    if df_check.empty:
-        st.error("❌ 未取得資料，請確認是否為有效交易日")
-    else:
-        st.success(
-            f"✅ 已成功下載【{trade_date.strftime('%Y-%m-%d')}】"
-            f" 之『券商分點買賣日報』（股票：2330）"
-        )
-
-        st.caption(
-            f"資料來源：TWSE bsr｜查詢日期：{trade_date.strftime('%Y-%m-%d')}"
-        )
-
-        st.dataframe(df_check.head(10))
-
-# ===== Tabs（保持原樣）=====
 tab1, tab2 = st.tabs(["📈 期權趨勢", "📊 個股期貨"])
 with tab1:
     render_tab_option_market(trade_date)
 with tab2:
     render_tab_stock_futures(trade_date)
-
