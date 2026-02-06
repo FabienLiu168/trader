@@ -332,6 +332,7 @@ def render_stock_table_html(df: pd.DataFrame):
     html = "<table style='width:100%;border-collapse:collapse;'>"
     html += "<thead><tr style='background:#f5f5f5;'>"
     for c in df.columns:
+        bg = "#eaeaea" if c in gray_cols else "#f5f5f5"
         html += f"<th style='padding:8px;border:1px solid #ddd'>{c}</th>"
     html += "</tr></thead><tbody>"
     for _, row in df.iterrows():
