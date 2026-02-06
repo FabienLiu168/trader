@@ -302,6 +302,65 @@ def render_tab_option_market(trade_date):
     st.subheader("📊 大盤分析")
     st.metric("📈 期貨趨勢", fut_dir, f"價差 {price_diff:+.0f}｜OI {oi_disp}")
 
+def render_tab_stock_futures(trade_date):
+    st.subheader("📊 前20大個股盤後籌碼")
+
+    df = fetch_top20_by_amount_twse_csv(trade_date)
+
+    required_cols = {"股票代碼", "股票名稱"}
+    if df.empty or not required_cols.issubset(df.columns):
+        st.warning("⚠️ 查無當日前 20 大成交資料")
+        return
+
+    st.markdown("### 📥 券商分點查詢輔助")
+
+    query_list = df[["股票代碼", "股票名稱"]].copy()
+    query_list["查詢日"] = trade_date.strftime("%Y-%m-%d")
+
+    st.download_button(
+        "📥 下載『今日券商分點查詢清單（CSV）』",
+        data=query_list.to_csv(index=False, encoding="utf-8-sig"),
+        file_name=f"twse_bsr_query_list_{trade_date.strftime('%Y%m%d')}.csv",
+        mime="text/csv",
+    )
+
+    use_twse = st.checkbox("📡 使用 TWSE 官方券商買賣資料（較慢）", value=False)
+    stock_ids = df["股票代碼"].astype(str).tolist()
+
+    summary = {}
+
+    if use_twse:
+        with st.spinner("📡 讀取 TWSE 官方券商資料中，請稍候..."):
+            summary = fetch_twse_broker_summary(stock_ids, trade_date)
+    else:
+        uploaded = st.file_uploader(
+            "📤 上傳券商分點 CSV（用於買賣超分析）",
+            type=["csv"],
+        )
+        if uploaded:
+            df_branch = parse_branch_csv(uploaded)
+            if df_branch.empty:
+                st.error("❌ CSV 無法解析")
+            else:
+                summary = calc_top5_buy_sell(df_branch)
+                st.success("✅ 已完成券商分點分析")
+
+    df["收盤"] = df.apply(lambda r: format_close_with_prev(r, trade_date), axis=1)
+    df["成交量"] = df["成交量"].apply(lambda x: f"{int(x/1000):,}")
+    df["成交金額"] = df["成交金額"].apply(lambda x: f"{x/1_000_000:,.0f} M")
+    df["買超"] = df["股票代碼"].apply(
+        lambda s: f"{summary.get(s, {}).get('買超', ''):,}" if s in summary else ""
+    )
+    df["賣超"] = df["股票代碼"].apply(
+        lambda s: f"{summary.get(s, {}).get('賣超', ''):,}" if s in summary else ""
+    )
+    df["券商分點"] = df["股票代碼"].apply(
+        lambda s: twse_bsr_hint_link(s, trade_date)
+    )
+
+    render_stock_table_html(
+        df[["股票代碼", "股票名稱", "收盤", "成交量", "成交金額", "買超", "賣超", "券商分點"]]
+    )
 
 # =========================
 # 主流程
