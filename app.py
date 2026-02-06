@@ -329,21 +329,38 @@ def render_tab_option_market(trade_date):
 # HTML 表格 render
 # =========================
 def render_stock_table_html(df: pd.DataFrame):
-    # ✅ 一定要在 function 內定義
     gray_cols = {"成交量", "成交金額", "買超", "賣超"}
+
     html = "<table style='width:100%;border-collapse:collapse;'>"
-    html += "<thead><tr style='background:#f5f5f5;'>"
+    html += "<thead><tr>"
+
     for c in df.columns:
-        bg = "#eaeaea" if c in gray_cols else "#f5f5f5"
-        html += f"<th style='padding:8px;border:1px solid #ddd'>{c}</th>"
+        # 👉 深灰底 + 白字
+        bg = "#3a3a3a" if c in gray_cols else "#2b2b2b"
+        color = "#ffffff"
+
+        html += (
+            f"<th style='padding:8px;border:1px solid #555;"
+            f"background:{bg};color:{color};"
+            f"text-align:center;font-weight:600'>"
+            f"{c}</th>"
+        )
+
     html += "</tr></thead><tbody>"
+
     for _, row in df.iterrows():
         html += "<tr>"
         for v in row:
-            html += f"<td style='padding:8px;border:1px solid #ddd;text-align:center'>{v}</td>"
+            html += (
+                "<td style='padding:8px;border:1px solid #444;"
+                "text-align:center'>"
+                f"{v}</td>"
+            )
         html += "</tr>"
+
     html += "</tbody></table>"
     st.markdown(html, unsafe_allow_html=True)
+
 
 def fetch_twse_broker_trade(stock_id: str, trade_date: dt.date) -> pd.DataFrame:
     """
