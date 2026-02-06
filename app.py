@@ -234,7 +234,7 @@ def render_tab_stock_futures(trade_date):
                 # ✅ 正確寫入
                 st.session_state.broker_done[sid] = result
                 st.success(f"✅ {sid} 買賣超已完成")
-                st.experimental_rerun()
+                #st.rerun()
 
 
 # =========================
