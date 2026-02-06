@@ -115,57 +115,64 @@ def calc_top5_buy_sell(df):
         "賣超": int(abs(sell)),
     }
 
+
 def parse_branch_csv(file):
     try:
         text = file.read().decode("big5", errors="ignore")
     except Exception:
         return pd.DataFrame()
 
+    # 固定欄位寬度（左 5 + 右 5）
+    colspecs = [
+        (0, 4),    # 左序號
+        (4, 18),   # 左券商
+        (18, 26),  # 左價格
+        (26, 36),  # 左買進
+        (36, 46),  # 左賣出
+        (46, 50),  # 右序號
+        (50, 64),  # 右券商
+        (64, 72),  # 右價格
+        (72, 82),  # 右買進
+        (82, 92),  # 右賣出
+    ]
+
+    try:
+        df_raw = pd.read_fwf(
+            io.StringIO(text),
+            colspecs=colspecs,
+            header=None,
+            skiprows=3,  # 跳過標題
+        )
+    except Exception:
+        return pd.DataFrame()
+
     rows = []
 
-    for line in text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        if "券商買賣股票成交價量資訊" in line:
-            continue
-        if line.startswith("股票代碼") or line.startswith("序號"):
-            continue
-
-        # 抓出所有數字（價格、買進、賣出）
-        nums = [int(x) for x in re.findall(r"\d+", line)]
-
-        # 抓出中文 + 數字的券商名稱
-        brokers = re.findall(r"\d{4}.+?(?=\s+\d{4})", line)
-
-        # 一行通常有 2 筆
-        if len(nums) >= 6 and len(brokers) >= 2:
-            # 左邊
+    for _, r in df_raw.iterrows():
+        # 左邊
+        if pd.notna(r[1]):
             rows.append({
-                "券商": brokers[0].strip(),
-                "買進": nums[1],
-                "賣出": nums[2],
-            })
-            # 右邊
-            rows.append({
-                "券商": brokers[1].strip(),
-                "買進": nums[4],
-                "賣出": nums[5],
+                "券商": str(r[1]).strip(),
+                "買進": pd.to_numeric(r[3], errors="coerce"),
+                "賣出": pd.to_numeric(r[4], errors="coerce"),
             })
 
-        # 只有一筆的行（尾端）
-        elif len(nums) >= 3 and len(brokers) == 1:
+        # 右邊
+        if pd.notna(r[6]):
             rows.append({
-                "券商": brokers[0].strip(),
-                "買進": nums[1],
-                "賣出": nums[2],
+                "券商": str(r[6]).strip(),
+                "買進": pd.to_numeric(r[8], errors="coerce"),
+                "賣出": pd.to_numeric(r[9], errors="coerce"),
             })
 
     df = pd.DataFrame(rows)
     if df.empty:
         return pd.DataFrame()
 
+    df["買進"] = df["買進"].fillna(0).astype(int)
+    df["賣出"] = df["賣出"].fillna(0).astype(int)
     df["買賣超"] = df["買進"] - df["賣出"]
+
     return df
 
 
