@@ -255,10 +255,30 @@ def render_tab_stock_futures(trade_date):
         )
     )
 
-    st.dataframe(
-        df[["股票代碼","股票名稱","收盤","成交量","成交金額","買超","賣超","券商分點"]],
-        use_container_width=True,
-    )
+    html = "<table style='width:100%;border-collapse:collapse;'>"
+    html += "<thead><tr>"
+    
+    for c in ["股票代碼","股票名稱","收盤","成交量","成交金額","買超","賣超","券商分點"]:
+        html += (
+            "<th style='padding:8px;border:1px solid #555;"
+            "background:#2b2b2b;color:white;text-align:center;'>"
+            f"{c}</th>"
+        )
+    
+    html += "</tr></thead><tbody>"
+    
+    for _, r in df.iterrows():
+        html += "<tr>"
+        for c in ["股票代碼","股票名稱","收盤","成交量","成交金額","買超","賣超","券商分點"]:
+            html += (
+                "<td style='padding:8px;border:1px solid #444;text-align:center;'>"
+                f"{r[c]}</td>"
+            )
+        html += "</tr>"
+    
+    html += "</tbody></table>"
+    
+    st.markdown(html, unsafe_allow_html=True)
 
 
 # =========================
