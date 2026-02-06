@@ -536,31 +536,12 @@ def render_tab_stock_futures(trade_date):
     st.subheader("📊 前20大個股盤後籌碼")
 
     df = fetch_top20_by_amount_twse_csv(trade_date)
-    use_twse = st.checkbox("📡 使用 TWSE 官方券商買賣資料（較慢）", value=False)
-    stock_ids = df["股票代碼"].astype(str).tolist()
 
     if df.empty:
         st.warning("無資料")
         return
         
     summary = {}
-    if use_twse:
-        with st.spinner("📡 讀取 TWSE 官方券商資料中，請稍候..."):
-            summary = fetch_twse_broker_summary(stock_ids, trade_date)
-    
-    else:
-        uploaded = st.file_uploader(
-            "📤 上傳券商分點 CSV（用於買賣超分析）",
-            type=["csv"]
-        )
-        if uploaded:
-            df_branch = parse_branch_csv(uploaded)
-            if df_branch.empty:
-                st.error("❌ CSV 無法解析")
-            else:
-                summary = calc_top5_buy_sell(df_branch)
-                st.success("✅ 已完成券商分點分析")
-
 
     df["收盤"] = df.apply(lambda r: format_close_with_prev(r, trade_date), axis=1)
     df["成交量"] = df["成交量"].apply(lambda x: f"{int(x/1000):,}")
