@@ -118,7 +118,8 @@ def calc_top5_buy_sell(df):
 
 def parse_branch_csv(file):
     try:
-        text = file.read().decode("big5", errors="ignore")
+        raw = file.getvalue()
+        text = raw.decode("big5", errors="ignore")
     except Exception:
         return pd.DataFrame()
 
@@ -249,8 +250,9 @@ def render_tab_stock_futures(trade_date):
                 st.error(f"❌ {sid} CSV 無法解析")
             else:
                 result = calc_top5_buy_sell(df_branch)
+                # ✅ 正確寫入
                 st.session_state.broker_done[sid] = result
-                #st.success(f"✅ {sid} 買賣超已完成")
+                st.success(f"✅ {sid} 買賣超已完成")
                 st.experimental_rerun()
 
 
