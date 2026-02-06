@@ -97,7 +97,7 @@ def calc_top5_buy_sell(df):
         .groupby("券商")["買賣超"]
         .sum()
         .sort_values(ascending=False)
-        .head(10)
+        .head(5)
         .sum()
     )
 
@@ -106,7 +106,7 @@ def calc_top5_buy_sell(df):
         .groupby("券商")["買賣超"]
         .sum()
         .sort_values()
-        .head(10)
+        .head(5)
         .sum()
     )
 
