@@ -28,30 +28,180 @@ st.markdown(
 )
 
 st.markdown(
-    f"<div style='font-size:2.5rem;font-weight:700;text-align:center;color:#2d82b5;'>{APP_TITLE}</div>",
+    f"<div style='font-size:2.2rem;font-weight:700;text-align:center;color:#2d82b5;'>{APP_TITLE}</div>",
     unsafe_allow_html=True,
 )
 
 # =========================
-# 工具函式
+# FinMind 基礎
+# =========================
+def get_finmind_token():
+    return (
+        str(st.secrets.get("FINMIND_TOKEN", "")).strip()
+        or os.environ.get("FINMIND_TOKEN", "").strip()
+    )
+
+FINMIND_TOKEN = get_finmind_token()
+FINMIND_API = "https://api.finmindtrade.com/api/v4/data"
+
+
+@st.cache_data(ttl=600)
+def finmind_get(dataset, data_id, start_date, end_date):
+    params = {
+        "dataset": dataset,
+        "start_date": start_date,
+        "end_date": end_date,
+        "token": FINMIND_TOKEN,
+    }
+    if data_id:
+        params["data_id"] = data_id
+
+    try:
+        r = requests.get(FINMIND_API, params=params, timeout=30)
+        j = r.json()
+    except Exception:
+        return pd.DataFrame()
+
+    if j.get("status") != 200:
+        return pd.DataFrame()
+
+    return pd.DataFrame(j.get("data", []))
+
+
+# =========================
+# 安全工具
 # =========================
 def is_trading_day(d: dt.date) -> bool:
     return d.weekday() < 5
 
 
-def fmt_num(x):
-    return f"{int(x):,}" if isinstance(x, (int, float)) else ""
-
-
-def twse_bsr_download_link(stock_id: str) -> str:
-    return (
-        "<a href='https://bsr.twse.com.tw/bshtm/bsMenu.aspx' "
-        f"target='_blank' title='股票代碼 {stock_id}'>查詢</a>"
+# =========================
+# 外資期貨 OI
+# =========================
+@st.cache_data(ttl=600)
+def fetch_fut_foreign_oi(trade_date: dt.date):
+    df = finmind_get(
+        "TaiwanFuturesInstitutionalInvestors",
+        "TX",
+        trade_date.strftime("%Y-%m-%d"),
+        trade_date.strftime("%Y-%m-%d"),
     )
+    if df.empty:
+        return None
+
+    df = df[df["institutional_investors"] == "Foreign_Investor"]
+    if df.empty:
+        return None
+
+    return float(df.iloc[0]["open_interest_net"])
+
+
+def get_prev_fut_foreign_oi(trade_date: dt.date, lookback_days=7):
+    for i in range(1, lookback_days + 1):
+        d = trade_date - dt.timedelta(days=i)
+        if d.weekday() >= 5:
+            continue
+        oi = fetch_fut_foreign_oi(d)
+        if oi is not None:
+            return oi
+    return None
 
 
 # =========================
-# 資料來源
+# 選擇權
+# =========================
+@st.cache_data(ttl=600)
+def fetch_option_latest(trade_date):
+    for i in range(1, 6):
+        d = trade_date - dt.timedelta(days=i)
+        if d.weekday() >= 5:
+            continue
+        df = finmind_get(
+            "TaiwanOptionDaily",
+            "TXO",
+            d.strftime("%Y-%m-%d"),
+            d.strftime("%Y-%m-%d"),
+        )
+        if not df.empty:
+            return df
+    return pd.DataFrame()
+
+
+def option_structure_engine(df):
+    if df is None or df.empty or "call_put" not in df.columns:
+        return None
+
+    x = df.copy()
+    x["cp"] = x["call_put"].str.lower()
+    x["strike"] = pd.to_numeric(x["strike_price"], errors="coerce")
+    x["oi"] = pd.to_numeric(x["open_interest"], errors="coerce")
+    x = x.dropna(subset=["cp", "strike", "oi"])
+
+    call = x[x["cp"] == "call"]
+    put = x[x["cp"] == "put"]
+
+    if call.empty or put.empty:
+        return None
+
+    return {
+        "call_wall": int(call.loc[call["oi"].idxmax(), "strike"]),
+        "put_wall": int(put.loc[put["oi"].idxmax(), "strike"]),
+        "dominant": "call" if call["oi"].sum() > put["oi"].sum() else "put",
+    }
+
+
+# =========================
+# 第一組模組：期權趨勢（完整保留）
+# =========================
+def render_tab_option_market(trade_date):
+    df_price = finmind_get(
+        "TaiwanStockPrice",
+        "2330",
+        (trade_date - dt.timedelta(days=3)).strftime("%Y-%m-%d"),
+        trade_date.strftime("%Y-%m-%d"),
+    )
+
+    if len(df_price) < 2:
+        st.warning("價格資料不足")
+        return
+
+    df_price = df_price.sort_values("date")
+    price_prev = df_price.iloc[-2]["close"]
+    price_today = df_price.iloc[-1]["close"]
+    price_diff = price_today - price_prev
+
+    oi_today = fetch_fut_foreign_oi(trade_date)
+    oi_prev = get_prev_fut_foreign_oi(trade_date)
+
+    if oi_today is not None and oi_prev is not None:
+        if price_diff > 0 and oi_today - oi_prev > 0:
+            fut_dir = "趨勢多"
+        elif price_diff < 0 and oi_today - oi_prev > 0:
+            fut_dir = "趨勢空"
+        else:
+            fut_dir = "震盪"
+        oi_disp = f"{oi_today - oi_prev:+,.0f}"
+    else:
+        fut_dir = "中性"
+        oi_disp = "資料不足"
+
+    opt_today = option_structure_engine(fetch_option_latest(trade_date))
+
+    st.subheader("📈 期權趨勢（第一模組）")
+    st.metric(
+        "期貨趨勢",
+        fut_dir,
+        f"價差 {price_diff:+.0f}｜OI {oi_disp}",
+    )
+
+    if opt_today:
+        st.info(
+            f"選擇權防線：Put {opt_today['put_wall']} / Call {opt_today['call_wall']}"
+        )
+
+
+# =========================
+# 第二組模組：個股表格（穩定版）
 # =========================
 @st.cache_data(ttl=600)
 def fetch_top20_by_amount_twse_csv(trade_date):
@@ -86,119 +236,24 @@ def fetch_top20_by_amount_twse_csv(trade_date):
     return df.sort_values("成交金額", ascending=False).head(20)
 
 
-def parse_branch_csv(file):
-    try:
-        df = pd.read_csv(file)
-    except Exception:
-        return pd.DataFrame()
-
-    col_map = {}
-    for c in df.columns:
-        if "代號" in c:
-            col_map[c] = "股票代碼"
-        elif "買" in c:
-            col_map[c] = "買進"
-        elif "賣" in c:
-            col_map[c] = "賣出"
-
-    df = df.rename(columns=col_map)
-
-    if not {"股票代碼", "買進", "賣出"}.issubset(df.columns):
-        return pd.DataFrame()
-
-    df["股票代碼"] = df["股票代碼"].astype(str)
-    df["買進"] = pd.to_numeric(df["買進"], errors="coerce").fillna(0)
-    df["賣出"] = pd.to_numeric(df["賣出"], errors="coerce").fillna(0)
-    df["買賣超"] = df["買進"] - df["賣出"]
-
-    return df
-
-
-def calc_top5_buy_sell(df):
-    result = {}
-    for sid, g in df.groupby("股票代碼"):
-        buy = g[g["買賣超"] > 0].nlargest(5, "買賣超")["買賣超"].sum()
-        sell = g[g["買賣超"] < 0].nsmallest(5, "買賣超")["買賣超"].sum()
-        result[sid] = {"買超": int(buy), "賣超": int(abs(sell))}
-    return result
-
-
-# =========================
-# HTML 表格
-# =========================
-def render_stock_table_html(df: pd.DataFrame):
-    html = "<table style='width:100%;border-collapse:collapse;'>"
-    html += "<thead><tr>"
-    for c in df.columns:
-        html += f"<th style='padding:8px;border:1px solid #555;background:#2b2b2b;color:white'>{c}</th>"
-    html += "</tr></thead><tbody>"
-
-    for _, row in df.iterrows():
-        html += "<tr>"
-        for v in row:
-            html += f"<td style='padding:8px;border:1px solid #444;text-align:center'>{v}</td>"
-        html += "</tr>"
-
-    html += "</tbody></table>"
-    st.markdown(html, unsafe_allow_html=True)
-
-
-# =========================
-# 主表模組
-# =========================
 def render_tab_stock_futures(trade_date):
-    st.subheader("📊 前20大個股盤後籌碼")
-
-    if "broker_done" not in st.session_state:
-        st.session_state.broker_done = {}
+    st.subheader("📊 前20大個股盤後籌碼（第二模組）")
 
     df = fetch_top20_by_amount_twse_csv(trade_date)
-
     if df.empty:
         st.warning("無資料")
         return
 
     df["成交量"] = df["成交量"].apply(lambda x: f"{int(x/1000):,}")
     df["成交金額"] = df["成交金額"].apply(lambda x: f"{x/1_000_000:,.0f} M")
+    df["買超"] = ""
+    df["賣超"] = ""
+    df["券商分點"] = ""
 
-    df["買超"] = df["股票代碼"].apply(
-        lambda s: fmt_num(st.session_state.broker_done.get(str(s), {}).get("買超"))
+    st.dataframe(
+        df[["股票代碼","股票名稱","收盤","成交量","成交金額","買超","賣超","券商分點"]],
+        use_container_width=True,
     )
-    df["賣超"] = df["股票代碼"].apply(
-        lambda s: fmt_num(st.session_state.broker_done.get(str(s), {}).get("賣超"))
-    )
-
-    df["券商分點"] = df["股票代碼"].apply(
-        lambda s: "✔ 已完成" if str(s) in st.session_state.broker_done else ""
-    )
-    df["下載"] = df["股票代碼"].apply(twse_bsr_download_link)
-    df["上傳"] = ""
-
-    render_stock_table_html(
-        df[["股票代碼","股票名稱","成交量","成交金額","買超","賣超","券商分點","下載","上傳"]]
-    )
-
-    st.markdown("### ⬆️ 單一股票券商分點 CSV 上傳")
-
-    for sid in df["股票代碼"].astype(str):
-        if sid in st.session_state.broker_done:
-            continue
-
-        uploaded = st.file_uploader(
-            f"📤 上傳 {sid} 券商分點 CSV",
-            type=["csv"],
-            key=f"upload_{sid}"
-        )
-
-        if uploaded:
-            df_branch = parse_branch_csv(uploaded)
-            if df_branch.empty:
-                st.error(f"❌ {sid} CSV 無法解析")
-            else:
-                result = calc_top5_buy_sell(df_branch)
-                if sid in result:
-                    st.session_state.broker_done[sid] = result[sid]
-                    st.success(f"✅ {sid} 買賣超已完成")
 
 
 # =========================
@@ -210,4 +265,10 @@ if not is_trading_day(trade_date):
     st.warning("非交易日")
     st.stop()
 
-render_tab_stock_futures(trade_date)
+tab1, tab2 = st.tabs(["📈 期權趨勢", "📊 個股期貨"])
+
+with tab1:
+    render_tab_option_market(trade_date)
+
+with tab2:
+    render_tab_stock_futures(trade_date)
