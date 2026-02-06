@@ -548,6 +548,8 @@ def calc_top5_buy_sell(df):
     return result
 
 def render_tab_stock_futures(trade_date):
+    if "completed_stocks" not in st.session_state:
+    st.session_state.completed_stocks = set()
 
     st.subheader("📊 前20大個股盤後籌碼")
 
@@ -594,6 +596,11 @@ def render_tab_stock_futures(trade_date):
                 st.error("❌ CSV 無法解析")
             else:
                 summary = calc_top5_buy_sell(df_branch)
+                
+                # ✅ 標記完成股票（關鍵）
+                completed_ids = set(df_branch["股票代碼"].astype(str).unique())
+                st.session_state.completed_stocks.update(completed_ids)
+                
                 st.success("✅ 已完成券商分點分析")
 
 
@@ -603,10 +610,13 @@ def render_tab_stock_futures(trade_date):
     df["成交金額"] = df["成交金額"].apply(lambda x: f"{x/1_000_000:,.0f} M")
     df["買超"] = df["股票代碼"].apply(lambda s: f"{summary.get(s,{}).get('買超',''):,}" if s in summary else "")
     df["賣超"] = df["股票代碼"].apply(lambda s: f"{summary.get(s,{}).get('賣超',''):,}" if s in summary else "")
-    df["券商分點"] = df["股票代碼"].apply(
-        lambda s: twse_bsr_hint_link(s, trade_date)
-    )
-
+    def broker_action_cell(stock_id):
+        if stock_id in st.session_state.completed_stocks:
+            return "<span style='color:#34C759;font-weight:600'>✅ 已完成</span>"
+        else:
+            return twse_bsr_hint_link(stock_id, trade_date)
+    
+    df["券商分點"] = df["股票代碼"].apply(broker_action_cell)
 
     render_stock_table_html(
         df[["股票代碼","股票名稱","收盤","成交量","成交金額","買超","賣超","券商分點"]]
