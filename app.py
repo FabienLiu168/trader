@@ -384,6 +384,26 @@ def render_stock_table_html(df: pd.DataFrame):
     html += "</tbody></table>"
     st.markdown(html, unsafe_allow_html=True)
 
+    st.markdown("### ⬆️ 上傳各股券商分點 CSV（逐檔）")
+    
+    for sid in df["股票代碼"].astype(str):
+        uploaded = st.file_uploader(
+            f"📤 上傳 {sid} 券商分點 CSV",
+            type=["csv"],
+            key=f"upload_{sid}",
+        )
+    
+        if uploaded:
+            df_branch = parse_branch_csv(uploaded)
+            if df_branch.empty:
+                st.error(f"❌ {sid} CSV 無法解析")
+            else:
+                result = calc_top5_buy_sell(df_branch)
+                if sid in result:
+                    st.session_state.broker_done[sid] = result[sid]
+                    st.success(f"✅ {sid} 已完成買賣超計算")
+
+
 def fetch_twse_broker_trade(stock_id: str, trade_date: dt.date) -> pd.DataFrame:
     """
     從 TWSE 官方 bsr 系統抓取【單一股票】當日券商買賣明細
@@ -533,6 +553,9 @@ def calc_top5_buy_sell(df):
     return result
 
 def render_tab_stock_futures(trade_date):
+    def fmt_num(x):
+    return f"{x:,}" if isinstance(x, (int, float)) else ""
+    
     st.subheader("📊 前20大個股盤後籌碼")
      # ✅ 新增：券商分點完成狀態
     if "broker_done" not in st.session_state:
@@ -573,11 +596,10 @@ def render_tab_stock_futures(trade_date):
     df["成交量"] = df["成交量"].apply(lambda x: f"{int(x/1000):,}")
     df["成交金額"] = df["成交金額"].apply(lambda x: f"{x/1_000_000:,.0f} M")
     df["買超"] = df["股票代碼"].apply(
-        lambda s: f"{st.session_state.broker_done.get(str(s), {}).get('買超',''):,}"
+        lambda s: fmt_num(st.session_state.broker_done.get(str(s), {}).get("買超"))
     )
-    
     df["賣超"] = df["股票代碼"].apply(
-        lambda s: f"{st.session_state.broker_done.get(str(s), {}).get('賣超',''):,}"
+        lambda s: fmt_num(st.session_state.broker_done.get(str(s), {}).get("賣超"))
     )
 
     df["券商分點"] = df["股票代碼"].apply(
@@ -589,12 +611,9 @@ def render_tab_stock_futures(trade_date):
     )
     
     df["下載"] = df["股票代碼"].apply(
-        lambda s: "" if str(s) in st.session_state.broker_done else twse_bsr_download_link(str(s))
+        lambda s: "<a href='https://bsr.twse.com.tw/bshtm/bsMenu.aspx' target='_blank'>查詢</a>"
     )
-    
-    df["上傳"] = df["股票代碼"].apply(
-        lambda s: "" if str(s) in st.session_state.broker_done else "⬆ 上傳中"
-    )
+    df["上傳"] = ""  # 佔位，實際 uploader 在表格下方
 
 
 def twse_bsr_download_link(stock_id: str) -> str:
