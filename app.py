@@ -116,52 +116,47 @@ def calc_top5_buy_sell(df):
 
 def parse_branch_csv(file):
     try:
-        # 直接當「純文字」讀，不用 pandas
-        text = file.read().decode("big5", errors="ignore")
+        # TWSE 分點 CSV：Big5、左右雙表、header 在第 3 行
+        df = pd.read_csv(
+            file,
+            encoding="big5",
+            engine="python",
+            header=2
+        )
     except Exception as e:
         st.error(f"讀檔失敗：{e}")
         return pd.DataFrame()
 
-    lines = text.splitlines()
-
     rows = []
 
-    for line in lines:
-        line = line.strip()
-
-        # 跳過標題與空行
-        if not line or "券商" in line or "股票代碼" in line:
-            continue
-
-        # 嘗試用「空白切」但不依賴欄位數
-        parts = line.split()
-
-        # 我們只接受「至少有：券商 + 買進 + 賣出」
-        # 格式通常是：
-        # 序號 券商 價格 買進 賣出
-        if len(parts) < 5:
-            continue
-
-        try:
-            broker = parts[1]
-            buy = int(parts[3])
-            sell = int(parts[4])
-
+    for _, r in df.iterrows():
+        # 左半邊
+        if pd.notna(r.get("券商")):
             rows.append({
-                "券商": broker,
-                "買進": buy,
-                "賣出": sell,
-                "買賣超": buy - sell,
+                "券商": str(r["券商"]).strip(),
+                "買進": pd.to_numeric(r["買進股數"], errors="coerce"),
+                "賣出": pd.to_numeric(r["賣出股數"], errors="coerce"),
             })
-        except Exception:
-            continue
 
-    df = pd.DataFrame(rows)
+        # 右半邊
+        if pd.notna(r.get("券商.1")):
+            rows.append({
+                "券商": str(r["券商.1"]).strip(),
+                "買進": pd.to_numeric(r["買進股數.1"], errors="coerce"),
+                "賣出": pd.to_numeric(r["賣出股數.1"], errors="coerce"),
+            })
 
-    if df.empty:
+    out = pd.DataFrame(rows)
+
+    if out.empty:
         return pd.DataFrame()
 
-    return df
+    out["買進"] = out["買進"].fillna(0)
+    out["賣出"] = out["賣出"].fillna(0)
+    out["買賣超"] = out["買進"] - out["賣出"]
+
+    return out
+
 
 
 # =========================
