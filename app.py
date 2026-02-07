@@ -114,6 +114,17 @@ def get_latest_trading_date(max_lookback=10):
             return d
     return today
 
+def get_report_status(stock_id: str):
+    img_path = f"uploads/{stock_id}.png"                 # 你手動存的截圖
+    pdf_path = f"pdfs/{stock_id}當沖日報表.pdf"          # 最終報表
+
+    if os.path.exists(pdf_path):
+        return "report"
+    if os.path.exists(img_path):
+        return "capture"
+    return "load"
+
+
 @st.cache_data(ttl=600)
 def get_prev_stock_close(stock_id: str, trade_date: dt.date):
     df = finmind_get(
@@ -551,18 +562,43 @@ def render_tab_stock_futures(trade_date):
     df["券商分點"] = df["股票代碼"].apply(
         lambda s: f"<a href='https://histock.tw/stock/branch.aspx?no={s}' target='_blank'>🔗</a>"
     )
-    df["載入圖"] = df["股票代碼"].apply(
-        lambda s: (
-            f"<a href='/export/{s}.html' "
-            f"target='_blank' "
-            f"style='padding:4px 8px;"
-            f"background:#2ecc71;"
-            f"color:white;"
-            f"text-decoration:none;"
-            f"border-radius:4px;'>"
-            f"載入</a>"
+
+def render_load_button(stock_id: str):
+    status = get_report_status(stock_id)
+
+    if status == "load":
+        return (
+            "<span style='padding:4px 8px;"
+            "background:#2ecc71;"
+            "color:white;"
+            "border-radius:4px;'>"
+            "載入</span>"
         )
-    )
+
+    if status == "capture":
+        return (
+            "<span style='padding:4px 8px;"
+            "background:#f39c12;"
+            "color:white;"
+            "border-radius:4px;'>"
+            "截圖</span>"
+        )
+
+    if status == "report":
+        return (
+            f"<a href='/pdfs/{stock_id}當沖日報表.pdf' "
+            f"target='_blank' "
+            "style='padding:4px 8px;"
+            "background:#3498db;"
+            "color:white;"
+            "text-decoration:none;"
+            "border-radius:4px;'>"
+            "報表</a>"
+        )
+
+    return ""
+ 
+        df["載入圖"] = df["股票代碼"].apply(render_load_button)
 
     render_stock_table_html(
         df[["股票代碼","股票名稱","收盤","成交量","成交金額","主力買超","主力賣超","券商分點","載入圖"]]
