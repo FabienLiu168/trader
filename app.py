@@ -9,7 +9,12 @@ import streamlit as st
 import io
 import urllib3
 import time
-import pdfkit
+itry:
+    import pdfkit
+except Exception:
+    pdfkit = None
+
+
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -478,14 +483,21 @@ def fetch_twse_broker_summary(stock_ids, trade_date):
     return result
 
 def html_to_pdf(stock_id):
+    if pdfkit is None:
+        return False
+
     html_path = f"reports/{stock_id}當沖日報表.html"
     pdf_path = f"pdfs/{stock_id}當沖日報表.pdf"
 
     if not os.path.exists(html_path):
         return False
 
-    pdfkit.from_file(html_path, pdf_path)
-    return True
+    try:
+        pdfkit.from_file(html_path, pdf_path)
+        return True
+    except Exception:
+        return False
+
 
 # =========================
 # 第二模組：個股＋籌碼
