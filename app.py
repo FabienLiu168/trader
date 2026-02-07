@@ -9,7 +9,7 @@ import streamlit as st
 import io
 import urllib3
 import time
-itry:
+try:
     import pdfkit
 except Exception:
     pdfkit = None
