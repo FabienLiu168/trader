@@ -598,7 +598,7 @@ def render_load_button(stock_id: str):
 
     return ""
  
-        df["載入圖"] = df["股票代碼"].apply(render_load_button)
+    df["載入圖"] = df["股票代碼"].apply(render_load_button)
 
     render_stock_table_html(
         df[["股票代碼","股票名稱","收盤","成交量","成交金額","主力買超","主力賣超","券商分點","載入圖"]]
