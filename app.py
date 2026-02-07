@@ -18,6 +18,13 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 st.set_page_config(page_title="O'法哥操盤室", layout="wide")
 APP_TITLE = "O'法哥操盤室"
 
+# =========================
+# Session State 初始化（一定要在最外層）
+# =========================
+if "active_stock" not in st.session_state:
+    st.session_state.active_stock = None
+
+
 st.markdown(
     """
     <style>
@@ -57,6 +64,8 @@ st.markdown(
     f"<div style='font-size:2.5rem;font-weight:700;text-align:center;color:#2d82b5;'>{APP_TITLE}</div>",
     unsafe_allow_html=True,
 )
+
+
 
 # =========================
 # FinMind 基礎
@@ -551,22 +560,84 @@ def render_tab_stock_futures(trade_date):
     df["券商分點"] = df["股票代碼"].apply(
         lambda s: f"<a href='https://histock.tw/stock/branch.aspx?no={s}' target='_blank'>🔗</a>"
     )
-    df["載入圖"] = df["股票代碼"].apply(
-        lambda s: (
-            f"<a href='/export/{s}.html' "
-            f"target='_blank' "
+     df["載入圖"] = df["股票代碼"].apply(render_load_button)
+
+
+def render_load_button(stock_id):
+    status = get_report_status(stock_id)
+
+    if status == "report":
+        return (
+            f"<a href='/pdfs/{stock_id}當沖日報表.pdf' target='_blank' "
             f"style='padding:4px 8px;"
-            f"background:#2ecc71;"
-            f"color:white;"
-            f"text-decoration:none;"
-            f"border-radius:4px;'>"
-            f"載入</a>"
+            f"background:#3498db;color:white;"
+            f"text-decoration:none;border-radius:4px;'>"
+            f"日報表</a>"
         )
+
+    # 尚未完成 → 載入（去 HiStock）
+    return (
+        f"<a href='https://histock.tw/stock/branch.aspx?no={stock_id}' "
+        f"target='_blank' "
+        f"style='padding:4px 8px;"
+        f"background:#2ecc71;color:white;"
+        f"text-decoration:none;border-radius:4px;'>"
+        f"載入</a>"
     )
 
+    # ===== ① 先 render 表格（這行一定要在前）=====
     render_stock_table_html(
-        df[["股票代碼","股票名稱","收盤","成交量","成交金額","主力買超","主力賣超","券商分點","載入圖"]]
+        df[["股票代碼","股票名稱","收盤","成交量","成交金額",
+            "主力買超","主力賣超","券商分點","載入圖"]]
     )
+
+    # ===== ② 再接「上傳截圖 → 產 PDF」區 =====
+    st.markdown("---")
+    st.subheader("📤 當沖日報表製作")
+    
+    active_stock = st.session_state.get("active_stock")
+    
+    if active_stock:
+        st.info(f"目前操作股票：{active_stock}")
+    
+        uploaded_img = st.file_uploader(
+            f"上傳 {active_stock} 的 HiStock 券商分點截圖",
+            type=["png", "jpg", "jpeg"]
+        )
+    
+        if uploaded_img:
+            os.makedirs("uploads", exist_ok=True)
+            os.makedirs("reports", exist_ok=True)
+            os.makedirs("pdfs", exist_ok=True)
+    
+            img_path = f"uploads/{active_stock}.png"
+            html_path = f"reports/{active_stock}當沖日報表.html"
+            pdf_path = f"pdfs/{active_stock}當沖日報表.pdf"
+    
+            with open(img_path, "wb") as f:
+                f.write(uploaded_img.getbuffer())
+    
+            html = f"""
+            <html><body>
+            <h2>{active_stock} 當沖日報表</h2>
+            <img src="../{img_path}" style="width:100%">
+            </body></html>
+            """
+    
+            with open(html_path, "w", encoding="utf-8") as f:
+                f.write(html)
+    
+            # 若你有 pdfkit，這裡會真的產 PDF
+            try:
+                import pdfkit
+                pdfkit.from_file(html_path, pdf_path)
+                st.success("✅ PDF 已產生")
+            except Exception:
+                st.warning("⚠️ HTML 已產生（尚未轉 PDF）")
+    
+            st.session_state.active_stock = None
+            st.rerun()
+
 
 # =========================
 # 主流程
