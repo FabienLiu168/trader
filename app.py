@@ -623,6 +623,16 @@ def calc_top5_buy_sell(df):
 
 def render_tab_stock_futures(trade_date):
     st.subheader("📊 前20大個股盤後籌碼")
+    st.markdown("### 📄 產出當沖報告")
+    
+    cols = st.columns(6)
+    
+    for i, (_, row) in enumerate(df.iterrows()):
+        with cols[i % 6]:
+            if st.button(f"📄 {row['股票代碼']}", key=f"report_{row['股票代碼']}"):
+                st.session_state["report_stock"] = row["股票代碼"]
+                st.rerun()
+
 
     df = fetch_top20_by_amount_twse_csv(trade_date)
 
@@ -653,6 +663,22 @@ def render_tab_stock_futures(trade_date):
 # =========================
 default_trade_date = get_latest_trading_date()
 trade_date = st.date_input("📅 查詢交易日", value=default_trade_date)
+
+if "report_stock" in st.session_state:
+    sid = st.session_state["report_stock"]
+    trade_date = default_trade_date
+
+    df_broker = fetch_twse_broker_trade(sid, trade_date)
+
+    html = render_v31_single_page_report(
+        stock_id=sid,
+        stock_name=sid,
+        trade_date=trade_date,
+        df_broker=df_broker,
+    )
+
+    st.components.v1.html(html, height=1200, scrolling=True)
+    st.stop()
 
 query = st.query_params
 if "report" in query:
