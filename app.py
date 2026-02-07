@@ -560,7 +560,7 @@ def render_tab_stock_futures(trade_date):
     df["券商分點"] = df["股票代碼"].apply(
         lambda s: f"<a href='https://histock.tw/stock/branch.aspx?no={s}' target='_blank'>🔗</a>"
     )
-     df["載入圖"] = df["股票代碼"].apply(render_load_button)
+    df["載入圖"] = df["股票代碼"].apply(render_load_button)
 
 
 def render_load_button(stock_id):
