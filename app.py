@@ -352,7 +352,7 @@ def render_tab_option_market(trade_date):
 # HTML 表格 render
 # =========================
 def render_stock_table_html(df: pd.DataFrame):
-    gray_cols = {"成交量", "成交金額", "買超", "賣超"}
+    gray_cols = {"成交量", "成交金額", "主力買超", "主力賣超"}
 
     html = "<table style='width:100%;border-collapse:collapse;'>"
     html += "<thead><tr>"
@@ -426,25 +426,25 @@ def fetch_twse_broker_trade(stock_id: str, trade_date: dt.date) -> pd.DataFrame:
             .astype(float)
         )
 
-    df["買賣超"] = df["買進"] - df["賣出"]
+    df["買主力賣超"] = df["買進"] - df["賣出"]
 
     return df
 def calc_top5_from_twse(df_broker: pd.DataFrame) -> dict:
     buy = (
-        df_broker[df_broker["買賣超"] > 0]
-        .nlargest(5, "買賣超")["買賣超"]
+        df_broker[df_broker["買主力賣超"] > 0]
+        .nlargest(5, "買主力賣超")["買主力賣超"]
         .sum()
     )
 
     sell = (
-        df_broker[df_broker["買賣超"] < 0]
-        .nsmallest(5, "買賣超")["買賣超"]
+        df_broker[df_broker["買主力賣超"] < 0]
+        .nsmallest(5, "買主力賣超")["買主力賣超"]
         .sum()
     )
 
     return {
-        "買超": int(buy),
-        "賣超": int(abs(sell)),
+        "主力買超": int(buy),
+        "主力賣超": int(abs(sell)),
     }
 @st.cache_data(ttl=3600)
 def fetch_twse_broker_summary(stock_ids, trade_date):
@@ -455,7 +455,7 @@ def fetch_twse_broker_summary(stock_ids, trade_date):
             df_broker = fetch_twse_broker_trade(sid, trade_date)
             result[sid] = calc_top5_from_twse(df_broker)
         except Exception:
-            result[sid] = {"買超": "", "賣超": ""}
+            result[sid] = {"主力買超": "", "主力賣超": ""}
 
         time.sleep(1.2)  # ⚠️ 必須限速，避免被 TWSE 擋
 
@@ -519,7 +519,7 @@ def parse_branch_csv(file):
     df["股票代碼"] = df["股票代碼"].astype(str)
     df["買進"] = pd.to_numeric(df["買進"], errors="coerce").fillna(0)
     df["賣出"] = pd.to_numeric(df["賣出"], errors="coerce").fillna(0)
-    df["買賣超"] = df["買進"] - df["賣出"]
+    df["買主力賣超"] = df["買進"] - df["賣出"]
 
     return df
 
@@ -527,9 +527,9 @@ def parse_branch_csv(file):
 def calc_top5_buy_sell(df):
     result = {}
     for sid, g in df.groupby("股票代碼"):
-        buy = g[g["買賣超"] > 0].nlargest(5, "買賣超")["買賣超"].sum()
-        sell = g[g["買賣超"] < 0].nsmallest(5, "買賣超")["買賣超"].sum()
-        result[sid] = {"買超": int(buy), "賣超": int(abs(sell))}
+        buy = g[g["買主力賣超"] > 0].nlargest(5, "買主力賣超")["買主力賣超"].sum()
+        sell = g[g["買主力賣超"] < 0].nsmallest(5, "買主力賣超")["買主力賣超"].sum()
+        result[sid] = {"主力買超": int(buy), "主力賣超": int(abs(sell))}
     return result
 
 def render_tab_stock_futures(trade_date):
@@ -546,14 +546,14 @@ def render_tab_stock_futures(trade_date):
     df["收盤"] = df.apply(lambda r: format_close_with_prev(r, trade_date), axis=1)
     df["成交量"] = df["成交量"].apply(lambda x: f"{int(x/1000):,}")
     df["成交金額"] = df["成交金額"].apply(lambda x: f"{x/1_000_000:,.0f} M")
-    df["買超"] = df["股票代碼"].apply(lambda s: f"{summary.get(s,{}).get('買超',''):,}" if s in summary else "")
-    df["賣超"] = df["股票代碼"].apply(lambda s: f"{summary.get(s,{}).get('賣超',''):,}" if s in summary else "")
+    df["主力買超"] = df["股票代碼"].apply(lambda s: f"{summary.get(s,{}).get('主力買超',''):,}" if s in summary else "")
+    df["主力賣超"] = df["股票代碼"].apply(lambda s: f"{summary.get(s,{}).get('主力賣超',''):,}" if s in summary else "")
     df["券商分點"] = df["股票代碼"].apply(
         lambda s: f"<a href='https://histock.tw/stock/branch.aspx?no={s}' target='_blank'>🔗</a>"
     )
 
     render_stock_table_html(
-        df[["股票代碼","股票名稱","收盤","成交量","成交金額","買超","賣超","券商分點"]]
+        df[["股票代碼","股票名稱","收盤","成交量","成交金額","主力買超","主力賣超","券商分點"]]
     )
 
 # =========================
