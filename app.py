@@ -9,12 +9,6 @@ import streamlit as st
 import io
 import urllib3
 import time
-try:
-    import pdfkit
-except Exception:
-    pdfkit = None
-
-
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -135,21 +129,6 @@ def get_prev_stock_close(stock_id: str, trade_date: dt.date):
     if prev.empty:
         return None
     return float(prev.iloc[-1]["close"])
-
-def get_report_status(stock_id: str):
-    """
-    回傳三種狀態：
-    load / capture / report
-    """
-    html_path = f"reports/{stock_id}當沖日報表.html"
-    pdf_path = f"pdfs/{stock_id}當沖日報表.pdf"
-
-    if os.path.exists(pdf_path):
-        return "report"
-    if os.path.exists(html_path):
-        return "capture"
-    return "load"
-
 
 def format_close_with_prev(row, trade_date):
     """
@@ -482,22 +461,6 @@ def fetch_twse_broker_summary(stock_ids, trade_date):
 
     return result
 
-def html_to_pdf(stock_id):
-    if pdfkit is None:
-        return False
-
-    html_path = f"reports/{stock_id}當沖日報表.html"
-    pdf_path = f"pdfs/{stock_id}當沖日報表.pdf"
-
-    if not os.path.exists(html_path):
-        return False
-
-    try:
-        pdfkit.from_file(html_path, pdf_path)
-        return True
-    except Exception:
-        return False
-
 
 # =========================
 # 第二模組：個股＋籌碼
@@ -588,37 +551,18 @@ def render_tab_stock_futures(trade_date):
     df["券商分點"] = df["股票代碼"].apply(
         lambda s: f"<a href='https://histock.tw/stock/branch.aspx?no={s}' target='_blank'>🔗</a>"
     )
-
-
-def render_load_button(stock_id: str):
-    status = get_report_status(stock_id)
-
-    if status == "load":
-        return (
-            "<span style='padding:4px 8px;"
-            "background:#3498db;color:white;border-radius:4px;'>"
-            "載入</span>"
+    df["載入圖"] = df["股票代碼"].apply(
+        lambda s: (
+            f"<a href='/export/{s}.html' "
+            f"target='_blank' "
+            f"style='padding:4px 8px;"
+            f"background:#2ecc71;"
+            f"color:white;"
+            f"text-decoration:none;"
+            f"border-radius:4px;'>"
+            f"載入</a>"
         )
-
-    if status == "capture":
-        return (
-            "<span style='padding:4px 8px;"
-            "background:#f39c12;color:white;border-radius:4px;'>"
-            "截圖</span>"
-        )
-
-    if status == "report":
-        return (
-            f"<a href='/pdfs/{stock_id}當沖日報表.pdf' target='_blank' "
-            "style='padding:4px 8px;"
-            "background:#2ecc71;color:white;border-radius:4px;"
-            "text-decoration:none;'>"
-            "報表</a>"
-        )
-
-
-    df["載入圖"] = df["股票代碼"].apply(render_load_button)
-
+    )
 
     render_stock_table_html(
         df[["股票代碼","股票名稱","收盤","成交量","成交金額","主力買超","主力賣超","券商分點","載入圖"]]
@@ -639,3 +583,4 @@ with tab1:
     render_tab_option_market(trade_date)
 with tab2:
     render_tab_stock_futures(trade_date)
+
