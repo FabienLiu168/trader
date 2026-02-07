@@ -623,22 +623,31 @@ def calc_top5_buy_sell(df):
 
 def render_tab_stock_futures(trade_date):
     st.subheader("📊 前20大個股盤後籌碼")
-    st.markdown("### 📄 產出當沖報告")
-    
-    cols = st.columns(6)
-    
-    for i, (_, row) in enumerate(df.iterrows()):
-        with cols[i % 6]:
-            if st.button(f"📄 {row['股票代碼']}", key=f"report_{row['股票代碼']}"):
-                st.session_state["report_stock"] = row["股票代碼"]
-                st.rerun()
-
-
     df = fetch_top20_by_amount_twse_csv(trade_date)
 
     if df.empty:
         st.warning("無資料")
         return
+        
+    # ✅ 載入圖（產出報告）按鈕區塊：放在 df 之後   
+    st.markdown("### 📄 產出當沖報告")
+    
+    df_btn = df.reset_index(drop=True)
+    cols = st.columns(6)
+    
+    #for i, (_, row) in enumerate(df.iterrows()):
+    #    with cols[i % 6]:
+    #        if st.button(f"📄 {row['股票代碼']}", key=f"report_{row['股票代碼']}"):
+    #            st.session_state["report_stock"] = row["股票代碼"]
+    #            st.rerun()
+    for i, row in df_btn.iterrows():
+        sid = str(row["股票代碼"]).strip()
+        with cols[i % 6]:
+            if st.button(f"📄 {sid}", key=f"report_{sid}"):
+                st.session_state["report_stock"] = sid
+                st.session_state["report_date"] = trade_date.strftime("%Y-%m-%d")
+                st.rerun()
+
         
     summary = {}
 
@@ -649,9 +658,6 @@ def render_tab_stock_futures(trade_date):
     df["主力賣超"] = df["股票代碼"].apply(lambda s: f"{summary.get(s,{}).get('主力賣超',''):,}" if s in summary else "")
     df["券商分點"] = df["股票代碼"].apply(
         lambda s: f"<a href='https://histock.tw/stock/branch.aspx?no={s}' target='_blank'>🔗</a>"
-    )
-    df["載入圖"] = df["股票代碼"].apply(
-        lambda s: f"<button onclick=\"window.open('?report={s}','_blank')\">📄</button>"
     )
 
     render_stock_table_html(
@@ -666,7 +672,11 @@ trade_date = st.date_input("📅 查詢交易日", value=default_trade_date)
 
 if "report_stock" in st.session_state:
     sid = st.session_state["report_stock"]
-    trade_date = default_trade_date
+
+    # ✅ 用使用者點按鈕時存的日期（若沒有就用目前 date_input）
+    d = st.session_state.get("report_date")
+    if d:
+        trade_date = dt.datetime.strptime(d, "%Y-%m-%d").date()
 
     df_broker = fetch_twse_broker_trade(sid, trade_date)
 
@@ -678,21 +688,12 @@ if "report_stock" in st.session_state:
     )
 
     st.components.v1.html(html, height=1200, scrolling=True)
-    st.stop()
 
-query = st.query_params
-if "report" in query:
-    sid = query["report"]
-    trade_date = default_trade_date
-
-    df_broker = fetch_twse_broker_trade(sid, trade_date)
-
-    html = render_v31_single_page_report(
-        stock_id=sid,
-        stock_name=sid,  # 你也可補股票名稱
-        trade_date=trade_date,
-        df_broker=df_broker,
-    )
+    # ✅ 可選：加返回按鈕（不會破壞任何功能）
+    if st.button("⬅ 返回列表"):
+        st.session_state.pop("report_stock", None)
+        st.session_state.pop("report_date", None)
+        st.rerun()
 
     st.components.v1.html(html, height=1200, scrolling=True)
     st.stop()
