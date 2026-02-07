@@ -462,6 +462,95 @@ def fetch_twse_broker_summary(stock_ids, trade_date):
     return result
 
 
+
+def render_v31_single_page_report(
+    stock_id: str,
+    stock_name: str,
+    trade_date: dt.date,
+    df_broker: pd.DataFrame,
+):
+    """
+    依你目前 V3.1 規格，動態產出【單頁可列印 HTML】
+    """
+
+    # === 前三大買超 ===
+    top_buy = (
+        df_broker[df_broker["買主力賣超"] > 0]
+        .nlargest(3, "買主力賣超")
+    )
+
+    buy_sum = int(top_buy["買主力賣超"].sum())
+    buy_avg = (
+        (top_buy["買主力賣超"] * top_buy["均價"]).sum()
+        / buy_sum
+        if buy_sum > 0 else None
+    )
+
+    # === 前三大賣超 ===
+    top_sell = (
+        df_broker[df_broker["買主力賣超"] < 0]
+        .nsmallest(3, "買主力賣超")
+    )
+
+    sell_sum = int(abs(top_sell["買主力賣超"].sum()))
+    sell_avg = (
+        (abs(top_sell["買主力賣超"]) * top_sell["均價"]).sum()
+        / sell_sum
+        if sell_sum > 0 else None
+    )
+
+    net = buy_sum - sell_sum
+
+    html = f"""
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>{stock_id} 當沖投資建議日報 V3.1</title>
+      <style>
+        body {{ font-family: "Noto Sans TC"; padding: 24px; }}
+        h1 {{ color: #2e7d32; }}
+        table {{ width: 100%; border-collapse: collapse; margin-top: 16px; }}
+        th, td {{ border: 1px solid #ccc; padding: 10px; text-align: center; }}
+        th {{ background: #e8f5e9; }}
+      </style>
+    </head>
+    <body>
+      <h1>{stock_name}（{stock_id}）當沖投資建議日報｜V3.1</h1>
+      <p>日期：{trade_date}</p>
+
+      <h2>二、買賣力量</h2>
+      <table>
+        <tr>
+          <th>項目</th>
+          <th>前三大加總</th>
+          <th>解讀</th>
+        </tr>
+        <tr>
+          <td>主力買超</td>
+          <td>+{buy_sum:,}@{buy_avg:.2f}</td>
+          <td>前三大券商買超加權均價</td>
+        </tr>
+        <tr>
+          <td>主力賣超</td>
+          <td>-{sell_sum:,}@{sell_avg:.2f}</td>
+          <td>前三大券商賣超加權均價</td>
+        </tr>
+        <tr>
+          <td>淨力量</td>
+          <td>{net:+,}</td>
+          <td>買超扣除賣超結果</td>
+        </tr>
+      </table>
+
+      <p style="margin-top:24px;font-size:14px;">
+        ※ 本報表為當沖研究用途，請自行控管風險。
+      </p>
+    </body>
+    </html>
+    """
+
+    return html
+
 # =========================
 # 第二模組：個股＋籌碼
 # =========================
@@ -552,16 +641,8 @@ def render_tab_stock_futures(trade_date):
         lambda s: f"<a href='https://histock.tw/stock/branch.aspx?no={s}' target='_blank'>🔗</a>"
     )
     df["載入圖"] = df["股票代碼"].apply(
-        lambda s: (
-            f"<a href='/generate_report?stock={s}&date={trade_date}' "
-            f"target='_blank' "
-            f"style='padding:4px 10px;"
-            f"background:#2ecc71;color:white;"
-            f"text-decoration:none;border-radius:4px;'>"
-            f"載入</a>"
-        )
+        lambda s: f"<button onclick=\"window.open('?report={s}','_blank')\">📄</button>"
     )
-
 
     render_stock_table_html(
         df[["股票代碼","股票名稱","收盤","成交量","成交金額","主力買超","主力賣超","券商分點","載入圖"]]
@@ -573,6 +654,23 @@ def render_tab_stock_futures(trade_date):
 default_trade_date = get_latest_trading_date()
 trade_date = st.date_input("📅 查詢交易日", value=default_trade_date)
 
+query = st.query_params
+if "report" in query:
+    sid = query["report"]
+    trade_date = default_trade_date
+
+    df_broker = fetch_twse_broker_trade(sid, trade_date)
+
+    html = render_v31_single_page_report(
+        stock_id=sid,
+        stock_name=sid,  # 你也可補股票名稱
+        trade_date=trade_date,
+        df_broker=df_broker,
+    )
+
+    st.components.v1.html(html, height=1200, scrolling=True)
+    st.stop()
+    
 if not is_trading_day(trade_date):
     st.warning("非交易日")
     st.stop()
