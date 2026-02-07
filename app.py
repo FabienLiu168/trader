@@ -553,16 +553,15 @@ def render_tab_stock_futures(trade_date):
     )
     df["載入圖"] = df["股票代碼"].apply(
         lambda s: (
-            f"<a href='/export/{s}.html' "
+            f"<a href='/generate_report?stock={s}&date={trade_date}' "
             f"target='_blank' "
-            f"style='padding:4px 8px;"
-            f"background:#2ecc71;"
-            f"color:white;"
-            f"text-decoration:none;"
-            f"border-radius:4px;'>"
+            f"style='padding:4px 10px;"
+            f"background:#2ecc71;color:white;"
+            f"text-decoration:none;border-radius:4px;'>"
             f"載入</a>"
         )
     )
+
 
     render_stock_table_html(
         df[["股票代碼","股票名稱","收盤","成交量","成交金額","主力買超","主力賣超","券商分點","載入圖"]]
