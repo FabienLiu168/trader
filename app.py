@@ -595,36 +595,27 @@ def render_load_button(stock_id: str):
 
     if status == "load":
         return (
-            f"<a href='https://histock.tw/stock/branch.aspx?no={stock_id}' "
-            f"target='_blank' "
-            f"style='padding:4px 8px;"
-            f"background:#3498db;"
-            f"color:white;"
-            f"text-decoration:none;"
-            f"border-radius:4px;'>"
-            f"載入</a>"
+            "<span style='padding:4px 8px;"
+            "background:#3498db;color:white;border-radius:4px;'>"
+            "載入</span>"
         )
 
     if status == "capture":
         return (
-            f"<span style='padding:4px 8px;"
-            f"background:#f39c12;"
-            f"color:white;"
-            f"border-radius:4px;'>"
-            f"截圖</span>"
+            "<span style='padding:4px 8px;"
+            "background:#f39c12;color:white;border-radius:4px;'>"
+            "截圖</span>"
         )
 
     if status == "report":
         return (
-            f"<a href='/pdfs/{stock_id}當沖日報表.pdf' "
-            f"target='_blank' "
-            f"style='padding:4px 8px;"
-            f"background:#2ecc71;"
-            f"color:white;"
-            f"text-decoration:none;"
-            f"border-radius:4px;'>"
-            f"報表</a>"
+            f"<a href='/pdfs/{stock_id}當沖日報表.pdf' target='_blank' "
+            "style='padding:4px 8px;"
+            "background:#2ecc71;color:white;border-radius:4px;"
+            "text-decoration:none;'>"
+            "報表</a>"
         )
+
 
     df["載入圖"] = df["股票代碼"].apply(render_load_button)
 
