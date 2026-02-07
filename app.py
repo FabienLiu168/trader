@@ -578,7 +578,7 @@ def render_tab_stock_futures(trade_date):
     )
 
 
-    def render_load_button(stock_id: str):
+def render_load_button(stock_id: str):
     status = get_report_status(stock_id)
 
     if status == "load":
