@@ -358,6 +358,8 @@ def render_stock_table_html(df: pd.DataFrame):
     html += "<thead><tr>"
 
     for c in df.columns:
+        if c == "收盤數值":
+            continue  # 不顯示
         bg = "#3a3a3a" if c in gray_cols else "#2b2b2b"
         html += (
             f"<th style='padding:8px;border:1px solid #555;"
@@ -368,27 +370,29 @@ def render_stock_table_html(df: pd.DataFrame):
     html += "</tr></thead><tbody>"
 
     for _, row in df.iterrows():
-        # === 關鍵：從收盤欄位抓數值 ===
+        highlight = False
         try:
-            close_text = str(row["收盤"])
-            close_price = float(close_text.split("(")[0])
-            highlight = close_price < 200
+            if float(row["收盤數值"]) < 200:
+                highlight = True
         except Exception:
-            highlight = False
+            pass
 
-        for col in df.columns:
+        for c in df.columns:
+            if c == "收盤數值":
+                continue
+
             cell_bg = "#FFF4CC" if highlight else ""
             html += (
                 f"<td style='padding:8px;border:1px solid #444;"
-                f"text-align:center;"
-                f"background-color:{cell_bg};'>"
-                f"{row[col]}</td>"
+                f"text-align:center;background-color:{cell_bg};'>"
+                f"{row[c]}</td>"
             )
 
         html += "</tr>"
 
     html += "</tbody></table>"
     st.markdown(html, unsafe_allow_html=True)
+
 
 
 def fetch_twse_broker_trade(stock_id: str, trade_date: dt.date) -> pd.DataFrame:
@@ -549,7 +553,9 @@ def render_tab_stock_futures(trade_date):
         return
         
     summary = {}
-    
+    # ✅ 關鍵：先保留數值
+    df["收盤數值"] = df["收盤"]
+    # ❗ 再轉成 HTML 顯示
     df["收盤"] = df.apply(lambda r: format_close_with_prev(r, trade_date), axis=1)
     df["成交量"] = df["成交量"].apply(lambda x: f"{int(x/1000):,}")
     df["成交金額"] = df["成交金額"].apply(lambda x: f"{x/1_000_000:,.0f} M")
@@ -559,8 +565,15 @@ def render_tab_stock_futures(trade_date):
         lambda s: f"<a href='https://histock.tw/stock/branch.aspx?no={s}' target='_blank'>🔗</a>"
     )
 
+    #render_stock_table_html(
+    #    df[["股票代碼","股票名稱","收盤","成交量","成交金額","主力買超","主力賣超","券商分點"]]
+    #)
     render_stock_table_html(
-        df[["股票代碼","股票名稱","收盤","成交量","成交金額","主力買超","主力賣超","券商分點"]]
+        df[[
+            "股票代碼","股票名稱","收盤數值",
+            "收盤","成交量","成交金額",
+            "主力買超","主力賣超","券商分點"
+        ]]
     )
 
 # =========================
