@@ -372,7 +372,16 @@ def render_stock_table_html(df: pd.DataFrame):
     html += "</tr></thead><tbody>"
 
     for _, row in df.iterrows():
-        html += "<tr>"
+    try:
+        highlight = (
+            "background-color:#FFF4CC;"   # 淺黃色
+            if pd.notna(row.get("收盤_raw")) and float(row["收盤_raw"]) < 200
+            else ""
+        )
+    except Exception:
+        highlight = ""
+
+    html += f"<tr style='{highlight}'>"
         for v in row:
             html += (
                 "<td style='padding:8px;border:1px solid #444;"
@@ -542,7 +551,7 @@ def render_tab_stock_futures(trade_date):
         return
         
     summary = {}
-
+    df["收盤_raw"] = df["收盤"]   # ← 保留數值用來判斷
     df["收盤"] = df.apply(lambda r: format_close_with_prev(r, trade_date), axis=1)
     df["成交量"] = df["成交量"].apply(lambda x: f"{int(x/1000):,}")
     df["成交金額"] = df["成交金額"].apply(lambda x: f"{x/1_000_000:,.0f} M")
