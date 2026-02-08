@@ -381,7 +381,7 @@ def render_stock_table_html(df: pd.DataFrame):
             if c == "收盤數值":
                 continue
 
-            cell_bg = "#b87e4f" if highlight else ""
+            cell_bg = "#3f5a73" if highlight else ""
             html += (
                 f"<td style='padding:8px;border:1px solid #444;"
                 f"text-align:center;background-color:{cell_bg};'>"
