@@ -371,25 +371,26 @@ def render_stock_table_html(df: pd.DataFrame):
 
     html += "</tr></thead><tbody>"
 
-        for _, row in df.iterrows():
-        try:
-            highlight = (
-                "background-color:#FFF4CC;"   # 淺黃色
-                if pd.notna(row.get("收盤_raw")) and float(row["收盤_raw"]) < 200
-                else ""
-            )
-        except Exception:
-            highlight = ""
-    
-        html += f"<tr style='{highlight}'>"
-        for v in row:
-            html += (
-                "<td style='padding:8px;border:1px solid #444;"
-                "text-align:center'>"
-                f"{v}</td>"
-            )
-        html += "</tr>"
+for _, row in df.iterrows():
+    try:
+        highlight = (
+            "background-color:#FFF4CC;"  # 淺黃色
+            if pd.notna(row.get("收盤_raw")) and float(row["收盤_raw"]) < 200
+            else ""
+        )
+    except Exception:
+        highlight = ""
 
+    html += f"<tr style='{highlight}'>"
+
+    for v in row:
+        html += (
+            "<td style='padding:8px;border:1px solid #444;"
+            "text-align:center'>"
+            f"{v}</td>"
+        )
+
+    html += "</tr>"
     html += "</tbody></table>"
     st.markdown(html, unsafe_allow_html=True)
 
