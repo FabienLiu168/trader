@@ -358,46 +358,38 @@ def render_stock_table_html(df: pd.DataFrame):
     html += "<thead><tr>"
 
     for c in df.columns:
-        # 👉 深灰底 + 白字
         bg = "#3a3a3a" if c in gray_cols else "#2b2b2b"
-        color = "#ffffff"
-
         html += (
             f"<th style='padding:8px;border:1px solid #555;"
-            f"background:{bg};color:{color};"
-            f"text-align:center;font-weight:600'>"
-            f"{c}</th>"
+            f"background:{bg};color:#ffffff;"
+            f"text-align:center;font-weight:600'>{c}</th>"
         )
 
     html += "</tr></thead><tbody>"
 
     for _, row in df.iterrows():
+        # === 關鍵：從收盤欄位抓數值 ===
         try:
-            # 從「收盤顯示字串」抓出數字（例如 97.80 (-4.59%)）
-            close_text = str(row.get("收盤", ""))
+            close_text = str(row["收盤"])
             close_price = float(close_text.split("(")[0])
-    
-            highlight = (
-                "background-color:#FFF4CC;"
-                if close_price < 200
-                else ""
-            )
+            highlight = close_price < 200
         except Exception:
-            highlight = ""
-    
-        html += f"<tr style='{highlight}'>"
+            highlight = False
 
-    
-        for v in row:
+        for col in df.columns:
+            cell_bg = "#FFF4CC" if highlight else ""
             html += (
-                "<td style='padding:8px;border:1px solid #444;"
-                "text-align:center'>"
-                f"{v}</td>"
+                f"<td style='padding:8px;border:1px solid #444;"
+                f"text-align:center;"
+                f"background-color:{cell_bg};'>"
+                f"{row[col]}</td>"
             )
-    
+
         html += "</tr>"
+
     html += "</tbody></table>"
     st.markdown(html, unsafe_allow_html=True)
+
 
 def fetch_twse_broker_trade(stock_id: str, trade_date: dt.date) -> pd.DataFrame:
     """
